@@ -2,23 +2,32 @@
 #
 #   Figure XXXX - Forest Plots
 #   Ian Becker
+#   November 2025
 #
 ##############################
 
 library(mgcv)
 library(ggplot2)
 library(dplyr)
+library(openxlsx)
 
 # Set working directory and load model
 
-best_model <- fitted_models[["full"]]
+model_dir <- "PATH HERE"
+best_model <- readRDS(file.path(model_dir, "spring_best_model.rds"))
+
+################
+#  Data Prep
+################
 
 # Extract smooth term statistics
+
 smooth_summary <- summary(best_model)$s.table
 smooth_df <- as.data.frame(smooth_summary)
 smooth_df$term <- rownames(smooth_df)
 
 # Filter out terms we don't want
+
 exclude_patterns <- c(
   ":ecoregion", 
   ":NLCD", 
@@ -30,6 +39,7 @@ keep_terms <- !grepl(paste(exclude_patterns, collapse = "|"), smooth_df$term)
 smooth_df <- smooth_df[keep_terms, ]
 
 # Clean up term names for the supplementary table
+
 clean_term_names <- function(term) {
   term <- gsub("s\\(", "", term)
   term <- gsub("ti\\(", "", term)
@@ -59,18 +69,21 @@ clean_term_names <- function(term) {
 smooth_df$term_full <- clean_term_names(smooth_df$term)
 
 # Assign categories
+
 assign_category <- function(term) {
   term_lower <- tolower(term)
   
   # Check if it's an interaction
+  
   if (grepl(" × ", term)) {
     return("Interaction")
   }
   
   # Main effects
+  
   if (grepl("spei", term_lower)) return("Drought")
-  if (grepl("temp|precip|wetness|wind|soil", term_lower)) return("Climate")
-  if (grepl("light|coast|water|forest|vegetation|greenness", term_lower)) return("Habitat")
+  if (grepl("temp|ppt|wetness|wind|soil", term_lower)) return("Climate")
+  if (grepl("light|coast|water|forest|vegetation|msavi", term_lower)) return("Habitat")
   
   return("Other")
 }
@@ -78,26 +91,38 @@ assign_category <- function(term) {
 smooth_df$category <- sapply(smooth_df$term_full, assign_category)
 
 # Calculate F-statistics and confidence intervals
+
 smooth_df$F_stat <- smooth_df$F
 
-# Calculate approximate 95% CI using chi-square approximation
+# Calculate approximate 95% CI 
+
 alpha <- 0.05
 smooth_df$F_lower <- smooth_df$F_stat * qchisq(alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 smooth_df$F_upper <- smooth_df$F_stat * qchisq(1 - alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 
 # Sort by F-statistic (largest to smallest)
+
 smooth_df <- smooth_df %>%
   arrange(desc(F_stat)) %>%
   mutate(term_number = row_number())
 
 # Create numbered labels for the plot
+
 smooth_df$term_label <- paste0("Term ", smooth_df$term_number)
 
 # Reorder factor levels for plotting (top to bottom)
+
 smooth_df$term_label <- factor(smooth_df$term_label, 
                                levels = rev(smooth_df$term_label))
 
+cat("\n✓ Data prep complete, time to plot!\n")
+
+################
+#  Plotting
+################
+
 # Define color scheme
+
 category_colors <- c(
   "Drought" = "#c94c4c",
   "Climate" = "#4c7ac9", 
@@ -106,36 +131,16 @@ category_colors <- c(
 )
 
 # Create the forest plot
+
 p <- ggplot(smooth_df, aes(x = F_stat, y = term_label, color = category)) +
-  # Add reference line at F=1
-  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.5) +
-  
-  # Add confidence intervals
+  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.5) + # Reference line at 0
   geom_errorbarh(aes(xmin = F_lower, xmax = F_upper),
-                 height = 0.3, linewidth = 0.7, alpha = 0.7) +
-  
-  # Add points
-  geom_point(size = 3.5, alpha = 0.9) +
-  
-  # Color scale
-  scale_color_manual(values = category_colors, name = "Term Type") +
-  
-  # X-axis with comma formatting
-  scale_x_continuous(labels = scales::comma) +
-  
-  # Labels
-  labs(
-    title = "Effect sizes of GAM smooth terms",
-    subtitle = "Fall migration model (F-statistics with 95% CI)",
-    x = "F-statistic",
-    y = NULL,
-    caption = paste0("n = ", format(best_model$n, big.mark = ","), " observations | ",
-                     "R² = ", round(summary(best_model)$r.sq, 3), " | ",
-                     "Deviance explained = ", round(summary(best_model)$dev.expl * 100, 1), "%")
-  ) +
-  
-  # Theme
-  theme_bw(base_size = 13) +
+                 height = 0.3, linewidth = 0.7, alpha = 0.7) + # Error bars
+  geom_point(size = 3.5, alpha = 0.9) + # Points
+  scale_color_manual(values = category_colors, name = "Term Type") + # Use color scale 
+  scale_x_continuous(labels = scales::comma) + # Format x-axis labels
+  labs(x = "F-statistic", y = NULL) +
+  theme_bw(base_size = 15) +
   theme(
     legend.position = "bottom",
     legend.title = element_text(face = "bold", size = 11),
@@ -150,20 +155,19 @@ p <- ggplot(smooth_df, aes(x = F_stat, y = term_label, color = category)) +
     axis.text.x = element_text(size = 10)
   )
 
+print(p) 
+
 # Save the plot
-ggsave("gam_results/fall_model_comparison/forest_plot_fall_numbered.png",
-       plot = p, width = 10, height = 12, dpi = 300, bg = "white")
 
-ggsave("gam_results/fall_model_comparison/forest_plot_fall_numbered.pdf",
-       plot = p, width = 10, height = 12)
-
-print(p)
-
+ggsave(file.path(model_dir, "spring_forest_plot.png"), plot = p, width = 10, height = 7, dpi = 300, bg = "white")
 cat("\n✓ Forest plot saved!\n")
-cat("PNG: gam_results/fall_model_comparison/forest_plot_fall_numbered.png\n")
-cat("PDF: gam_results/fall_model_comparison/forest_plot_fall_numbered.pdf\n\n")
+
+################
+#  Supplementary Table
+################
 
 # Create supplementary table with full term names
+
 supp_table <- smooth_df %>%
   arrange(term_number) %>%
   select(
@@ -183,28 +187,17 @@ supp_table <- smooth_df %>%
   )
 
 # Save supplementary table
-write.csv(supp_table, 
-          "gam_results/fall_model_comparison/forest_plot_supplementary_table.csv",
-          row.names = FALSE)
+
+write.xlsx(supp_table, 
+          file.path(model_dir, "spring_forest_plot_supplementary_table.xlsx"),
+          rowNames = FALSE)
 
 cat("✓ Supplementary table saved!\n")
-cat("CSV: gam_results/fall_model_comparison/forest_plot_supplementary_table.csv\n\n")
 
-# Print the table
+# Print table
+
 cat("=== SUPPLEMENTARY TABLE ===\n")
-print(supp_table, n = Inf)
+print(supp_table)
 
-# Summary by category
-cat("\n=== SUMMARY BY CATEGORY ===\n")
-smooth_df %>%
-  group_by(category) %>%
-  summarise(
-    n_terms = n(),
-    mean_F = mean(F_stat),
-    median_F = median(F_stat),
-    max_F = max(F_stat)
-  ) %>%
-  arrange(desc(mean_F)) %>%
-  print()
 
-cat("\n✓ Analysis complete!\n")
+cat("\n✓ Figure XXXX complete!\n")
