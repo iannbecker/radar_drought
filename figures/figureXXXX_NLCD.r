@@ -11,7 +11,7 @@ library(gratia)
 library(ggplot2)
 library(dplyr)
 
-model_dir <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar/GAMs"
+model_dir <- "PATH HERE"
 
 #################################
 # Data prep
@@ -21,8 +21,8 @@ model_dir <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexa
 
 nlcd_lookup <- data.frame(
   code = c(11, 12, 21, 22, 23, 24, 31, 41, 42, 43, 51, 52, 71, 81, 82, 90, 95),
-  alpha_code = c("OW", "PI", "OSD", "LID", "MID", "HID", "BR", "DF", "EF", "MF", 
-                 "DS", "SS", "GL", "PH", "CC", "WWo", "WWe"),
+  alpha_code = c("OWat", "PI", "DevOS", "DevLI", "DevMI", "DevHI", "BarL", "DecidF", "EverF", "MixF", 
+                 "DwaSc", "SH/SC", "Gra/Herb", "Past/Hay", "CulCro", "WoodWE", "EmergWe"),
   name = c("Open Water", "Perennial Ice/Snow", "Developed, Open Space", 
            "Developed, Low Intensity", "Developed, Medium Intensity", 
            "Developed, High Intensity", "Barren Land", "Deciduous Forest", 
@@ -37,7 +37,7 @@ print(nlcd_lookup)
 
 # Load model
 
-best_model <- readRDS(file.path(model_dir, "fall_best_model.rds")) # change based on season
+best_model <- readRDS(file.path(model_dir, "spring_best_model.rds")) # change based on season
 
 # Extract NLCD smooth terms
 
@@ -146,31 +146,32 @@ nlcd_smooth <- nlcd_smooth %>%
 nlcd_smooth$nlcd_alpha <- factor(nlcd_smooth$alpha_code, 
                                  levels = nlcd_lookup$alpha_code)
 
+# Remove Perennial Ice/Snow if it still exists
+
+nlcd_smooth <- nlcd_smooth %>%
+  filter(alpha_code != "PI")
+
 #################################
 #  Generate NLCD plots
 ################################
 
-# Create the plot
+# Create the plot (without CI for now)
 
 p <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate, group = nlcd_alpha)) +
   geom_line(aes(color = nlcd_alpha), linewidth = 1.2) +
-  geom_ribbon(aes(ymin = estimate - 2*se, 
-                  ymax = estimate + 2*se, 
-                  fill = nlcd_alpha), 
-              alpha = 0.2) +
-  scale_color_viridis_d(option = "turbo", name = "Habitat Type") +
-  scale_fill_viridis_d(option = "turbo", name = "Habitat Type") +
+  #geom_ribbon(aes(ymin = estimate - 2*se, 
+   #               ymax = estimate + 2*se, 
+    #              fill = nlcd_alpha), 
+      #        alpha = 0."2) +
+  scale_color_hue(name = "Land Cover Type") +
   theme_minimal(base_size = 14) +
-  labs(title = "Drought Effects by Habitat Type",
-       subtitle = paste("Model term:", nlcd_term),
-       x = "Drought Index (SPEI)",
-       y = "Effect on Stopover Density") +
+  labs(x = "SPEI", y = "Effect on Stopover Density") +
   theme(legend.position = "right",
         panel.grid.minor = element_blank())
 
 # Save plot
 
-plot_file <- file.path(model_dir, "nlcd_drought_interaction_alpha.png")
+plot_file <- file.path(model_dir, "spring_nlcd_drought_interaction_alpha.png")
 ggsave(plot_file, p, width = 12, height = 8, dpi = 300)
 cat("NLCD plot saved:", plot_file, "\n")
 
@@ -183,24 +184,20 @@ p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
                   fill = nlcd_alpha), 
               alpha = 0.2) +
   facet_wrap(~nlcd_alpha, scales = "free_y", ncol = 4) +
-  scale_color_viridis_d(option = "turbo", guide = "none") +
-  scale_fill_viridis_d(option = "turbo", guide = "none") +
+  scale_color_hue(name = "Habitat Type") +
   theme_minimal(base_size = 12) +
-  labs(title = "Drought Effects by Habitat Type (Faceted)",
-       subtitle = paste("Model term:", nlcd_term),
-       x = "Drought Index (SPEI)",
-       y = "Effect on Stopover Density") +
+  labs(x = "SPEI", y = "Effect on Stopover Density") +
   theme(panel.grid.minor = element_blank(),
         strip.text = element_text(face = "bold"))
 
 # Save supplementary faceted plot
 
-facet_file <- file.path(model_dir, "nlcd_drought_faceted_alpha.png")
+facet_file <- file.path(model_dir, "spring_nlcd_drought_faceted_alpha.png")
 ggsave(facet_file, p_facet, width = 14, height = 10, dpi = 300)
 cat("Faceted NLCD plot saved:", facet_file, "\n")
 
 # Save the data with alpha codes
 
-nlcd_data_file <- file.path(model_dir, "nlcd_smooth_estimates_alpha.csv")
+nlcd_data_file <- file.path(model_dir, "spring_nlcd_smooth_estimates_alpha.csv")
 write.csv(nlcd_smooth, nlcd_data_file, row.names = FALSE)
 cat("NLCD smooth estimates saved:", nlcd_data_file, "\n")
