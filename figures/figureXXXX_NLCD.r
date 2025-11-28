@@ -11,22 +11,14 @@ library(gratia)
 library(ggplot2)
 library(dplyr)
 
-# Set working directo
-
-# Configuration
-season <- "fall"  # Change to "spring" as needed
-output_dir <- paste0("gam_results/", season, "_model_comparison/nlcd_plots")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-
-cat(paste(rep("=", 60), collapse=""), "\n")
-cat("GAM NLCD HABITAT PLOT -", toupper(season), "SEASON\n")
-cat(paste(rep("=", 60), collapse=""), "\n\n")
+model_dir <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar/GAMs"
 
 #################################
-# NLCD CODE LOOKUP TABLE
+# Data prep
 #################################
 
-# NLCD classification with alpha codes
+# NLCD look up table
+
 nlcd_lookup <- data.frame(
   code = c(11, 12, 21, 22, 23, 24, 31, 41, 42, 43, 51, 52, 71, 81, 82, 90, 95),
   alpha_code = c("OW", "PI", "OSD", "LID", "MID", "HID", "BR", "DF", "EF", "MF", 
@@ -40,67 +32,113 @@ nlcd_lookup <- data.frame(
   stringsAsFactors = FALSE
 )
 
-cat("NLCD Lookup Table:\n")
+cat("NLCD Alpha Codes:\n")
 print(nlcd_lookup)
-cat("\n")
 
-#################################
-# LOAD MODEL
-#################################
+# Load model
 
-cat("Loading best model...\n")
-model_file <- paste0("gam_results/", season, "_model_comparison/", season, "_best_model.rds")
+best_model <- readRDS(file.path(model_dir, "fall_best_model.rds")) # change based on season
 
-if(!file.exists(model_file)) {
-  stop("Model file not found: ", model_file)
-}
+# Extract NLCD smooth terms
 
-best_model <- readRDS(model_file)
-cat("Model loaded successfully\n\n")
-
-#################################
-# EXTRACT NLCD TERM
-#################################
-
-cat("Extracting NLCD smooth term...\n")
+cat("Model Summary...\n")
 model_summary <- summary(best_model)
+print(model_summary)
 
 # Get all smooth terms
+
 smooth_terms <- model_summary$s.table
 smooth_names <- rownames(smooth_terms)
 
 # Find NLCD interaction term
-nlcd_term <- smooth_names[grepl("NLCD", smooth_names) & grepl("SPEI", smooth_names)]
 
-if(length(nlcd_term) == 0) {
-  stop("No NLCD interaction term found in model")
-}
+nlcd_term <- smooth_names[grepl("NLCD", smooth_names) & grepl("SPEI", smooth_names)]
 
 cat("Found NLCD term:", nlcd_term, "\n")
 cat("F-statistic:", smooth_terms[nlcd_term, "F"], "\n")
-cat("p-value:", smooth_terms[nlcd_term, "p-value"], "\n\n")
 
 #################################
 # GENERATE NLCD PLOT WITH ALPHA CODES
 #################################
 
-cat("Generating NLCD plot with alpha codes...\n")
+cat("\nGenerating NLCD plot with alpha codes...\n")
 
 tryCatch({
-  # Extract smooth estimates using gratia
-  nlcd_smooth <- gratia::smooth_estimates(best_model, smooth = nlcd_term, n = 100)
+  # Extract smooth estimates - for factor-by smooths, we need to handle this differently
+  cat("Extracting predictions from the model...\n")
   
-  cat("Smooth estimates extracted\n")
+  # Get the model data
+  model_data <- best_model$model
+  
+  # Identify SPEI and NLCD variables
+  spei_var <- names(model_data)[grepl("SPEI.*1995.*2020", names(model_data))][1]
+  nlcd_var <- names(model_data)[grepl("NLCD", names(model_data))][1]
+  
+  if(is.null(spei_var) || is.null(nlcd_var)) {
+    stop("Could not identify SPEI or NLCD variables in model data")
+  }
+  
+  cat("SPEI variable:", spei_var, "\n")
+  cat("NLCD variable:", nlcd_var, "\n")
+  
+  # Get unique NLCD levels
+  nlcd_levels <- levels(model_data[[nlcd_var]])
+  cat("NLCD levels found:", paste(nlcd_levels, collapse=", "), "\n")
+  
+  # Create prediction grid
+  spei_range <- seq(min(model_data[[spei_var]], na.rm = TRUE),
+                    max(model_data[[spei_var]], na.rm = TRUE),
+                    length.out = 100)
+  
+  # Create prediction data for each NLCD level
+  pred_list <- list()
+  
+  for(nlcd_level in nlcd_levels) {
+    # Create prediction data frame matching model structure
+    pred_data <- data.frame(
+      spei = spei_range,
+      nlcd = factor(nlcd_level, levels = nlcd_levels)
+    )
+    names(pred_data) <- c(spei_var, nlcd_var)
+    
+    # Add other variables at their median values
+    for(var in names(model_data)) {
+      if(!var %in% c(spei_var, nlcd_var, "stopover")) {
+        if(is.numeric(model_data[[var]])) {
+          pred_data[[var]] <- median(model_data[[var]], na.rm = TRUE)
+        } else if(is.factor(model_data[[var]])) {
+          pred_data[[var]] <- factor(levels(model_data[[var]])[1], 
+                                     levels = levels(model_data[[var]]))
+        }
+      }
+    }
+    
+    # Get predictions with standard errors
+    preds <- predict(best_model, newdata = pred_data, se.fit = TRUE, 
+                     type = "terms", terms = nlcd_term)
+    
+    # Store results
+    pred_list[[nlcd_level]] <- data.frame(
+      spei = spei_range,
+      nlcd_code = nlcd_level,
+      estimate = preds$fit[, 1],
+      se = preds$se.fit[, 1]
+    )
+  }
+  
+  # Combine all predictions
+  nlcd_smooth <- do.call(rbind, pred_list)
+  names(nlcd_smooth)[1] <- spei_var
+  
+  cat("Predictions extracted successfully\n")
   cat("Columns in smooth estimates:", paste(names(nlcd_smooth), collapse=", "), "\n")
   
   # Identify the NLCD factor column
-  nlcd_col <- names(nlcd_smooth)[grepl("NLCD", names(nlcd_smooth))][1]
-  
-  if(is.null(nlcd_col)) {
-    stop("Could not identify NLCD column in smooth estimates")
-  }
+  nlcd_col <- "nlcd_code"
+  spei_col <- spei_var
   
   cat("NLCD column identified:", nlcd_col, "\n")
+  cat("SPEI column identified:", spei_col, "\n")
   
   # Convert NLCD codes to alpha codes
   nlcd_smooth$nlcd_numeric <- as.numeric(as.character(nlcd_smooth[[nlcd_col]]))
@@ -118,23 +156,17 @@ tryCatch({
   nlcd_smooth$nlcd_alpha <- factor(nlcd_smooth$alpha_code, 
                                    levels = nlcd_lookup$alpha_code)
   
-  # Identify SPEI column
-  spei_col <- names(nlcd_smooth)[grepl("SPEI", names(nlcd_smooth)) & 
-                                   !grepl("by", names(nlcd_smooth))][1]
-  
-  cat("SPEI column identified:", spei_col, "\n")
-  
   # Create the plot
-  p <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = .estimate, group = nlcd_alpha)) +
+  p <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate, group = nlcd_alpha)) +
     geom_line(aes(color = nlcd_alpha), linewidth = 1.2) +
-    geom_ribbon(aes(ymin = .estimate - 2*.se, 
-                    ymax = .estimate + 2*.se, 
+    geom_ribbon(aes(ymin = estimate - 2*se, 
+                    ymax = estimate + 2*se, 
                     fill = nlcd_alpha), 
                 alpha = 0.2) +
     scale_color_viridis_d(option = "turbo", name = "Habitat Type") +
     scale_fill_viridis_d(option = "turbo", name = "Habitat Type") +
     theme_minimal(base_size = 14) +
-    labs(title = paste(toupper(season), "Season: Drought Effects by Habitat Type"),
+    labs(title = "Drought Effects by Habitat Type",
          subtitle = paste("Model term:", nlcd_term),
          x = "Drought Index (SPEI)",
          y = "Effect on Stopover Density") +
@@ -142,34 +174,34 @@ tryCatch({
           panel.grid.minor = element_blank())
   
   # Save plot
-  plot_file <- file.path(output_dir, paste0(season, "_nlcd_drought_interaction_alpha.png"))
+  plot_file <- file.path(model_dir, "nlcd_drought_interaction_alpha.png")
   ggsave(plot_file, p, width = 12, height = 8, dpi = 300)
   cat("NLCD plot saved:", plot_file, "\n")
   
   # Also create a faceted version for clarity
-  p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = .estimate)) +
+  p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
     geom_line(aes(color = nlcd_alpha), linewidth = 1) +
-    geom_ribbon(aes(ymin = .estimate - 2*.se, 
-                    ymax = .estimate + 2*.se, 
+    geom_ribbon(aes(ymin = estimate - 2*se, 
+                    ymax = estimate + 2*se, 
                     fill = nlcd_alpha), 
                 alpha = 0.2) +
     facet_wrap(~nlcd_alpha, scales = "free_y", ncol = 4) +
     scale_color_viridis_d(option = "turbo", guide = "none") +
     scale_fill_viridis_d(option = "turbo", guide = "none") +
     theme_minimal(base_size = 12) +
-    labs(title = paste(toupper(season), "Season: Drought Effects by Habitat Type (Faceted)"),
+    labs(title = "Drought Effects by Habitat Type (Faceted)",
          subtitle = paste("Model term:", nlcd_term),
          x = "Drought Index (SPEI)",
          y = "Effect on Stopover Density") +
     theme(panel.grid.minor = element_blank(),
           strip.text = element_text(face = "bold"))
   
-  facet_file <- file.path(output_dir, paste0(season, "_nlcd_drought_faceted_alpha.png"))
+  facet_file <- file.path(model_dir, "nlcd_drought_faceted_alpha.png")
   ggsave(facet_file, p_facet, width = 14, height = 10, dpi = 300)
   cat("Faceted NLCD plot saved:", facet_file, "\n")
   
   # Save the data with alpha codes
-  nlcd_data_file <- file.path(output_dir, paste0(season, "_nlcd_smooth_estimates_alpha.csv"))
+  nlcd_data_file <- file.path(model_dir, "nlcd_smooth_estimates_alpha.csv")
   write.csv(nlcd_smooth, nlcd_data_file, row.names = FALSE)
   cat("NLCD smooth estimates saved:", nlcd_data_file, "\n")
   
@@ -186,9 +218,15 @@ cat("\n")
 cat(paste(rep("=", 60), collapse=""), "\n")
 cat("NLCD PLOT GENERATION COMPLETE\n")
 cat(paste(rep("=", 60), collapse=""), "\n")
-cat("Output directory:", output_dir, "\n")
+cat("Output directory:", model_dir, "\n")
 cat("Files created:\n")
-cat("- Combined NLCD plot with alpha codes\n")
-cat("- Faceted NLCD plot with alpha codes\n")
-cat("- NLCD smooth estimates CSV with alpha codes\n")
+cat("- nlcd_drought_interaction_alpha.png\n")
+cat("- nlcd_drought_faceted_alpha.png\n")
+cat("- nlcd_smooth_estimates_alpha.csv\n")
 cat(paste(rep("=", 60), collapse=""), "\n")
+
+
+
+
+
+
