@@ -155,14 +155,10 @@ nlcd_smooth <- nlcd_smooth %>%
 #  Generate NLCD plots
 ################################
 
-# Create the plot (without CI for now)
+# Create the plot
 
 p <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate, group = nlcd_alpha)) +
   geom_line(aes(color = nlcd_alpha), linewidth = 1.2) +
-  #geom_ribbon(aes(ymin = estimate - 2*se, 
-   #               ymax = estimate + 2*se, 
-    #              fill = nlcd_alpha), 
-      #        alpha = 0."2) +
   scale_color_hue(name = "Land Cover Type") +
   theme_minimal(base_size = 14) +
   labs(x = "SPEI", y = "Effect on Stopover Density") +
