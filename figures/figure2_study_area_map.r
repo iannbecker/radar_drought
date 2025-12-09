@@ -1,9 +1,8 @@
-
 #################################
 #
-#   Ecoregion Map - Texas & Louisiana
+#   Figure 2 - Study Area Map
 #   Ian Becker
-#   Nov 2025
+#   November 2025
 #
 ################################
 

@@ -1,6 +1,6 @@
 ##############################
 #
-#   Figure XXXX - NLCD response curves
+#   Figure 6 - NLCD response curves
 #   Ian Becker
 #   November 2025
 #

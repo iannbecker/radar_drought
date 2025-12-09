@@ -1,6 +1,6 @@
 ##############################
 #
-#   Figure XXXX - Forest Plots
+#   Figure 4 - Forest Plots
 #   Ian Becker
 #   November 2025
 #
