@@ -17,6 +17,8 @@ setwd("PATH HERE")
 #   PREP DATA
 #################################
 
+cat("\nPREPARING DATA FOR GAMs\n")
+
 # Select season (change between fall and spring as needed)
 
 season <- "fall"  
@@ -29,18 +31,18 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Parallel processing
 
-n_cores <- 24  
+n_cores <- XXXX
 
 # Read in data
 
-cat("Loading dataset...\n")
+cat("LOADING DATA\n")
 pooled_data <- read.csv(input_data, stringsAsFactors = FALSE)
 
 # Data structure checks
 
-cat("Dataset loaded:\n")
-cat("  Observations:", nrow(pooled_data), "\n")
-cat("  Variables:", ncol(pooled_data), "\n\n")
+cat(toupper(season), "DATA:")
+cat("OBSERVATIONS:", nrow(pooled_data), "\n")
+cat("VARIABLES:", ncol(pooled_data), "\n")
 
 # Convert categorical variables to factors for model input
 
@@ -49,15 +51,17 @@ for(var in categorical_vars) {
   if(var %in% names(pooled_data)) {
     pooled_data[[var]] <- as.factor(pooled_data[[var]])
     pooled_data[[var]] <- droplevels(pooled_data[[var]])
-    cat("Converted", var, "to factor with", nlevels(pooled_data[[var]]), "levels\n")
+    cat("CONVERTED", var, "TO", nlevels(pooled_data[[var]]), "FACTOR LEVELS\n")
   }
 }
+
+cat("DATA PREP COMPLETE\n")
 
 #################################
 #   SETUP MODELS
 #################################
 
-cat("SETTING UP MODELS FOR", toupper(season))
+cat("\nSETTING UP MODELS FOR", toupper(season), "\n")
 
 # If else statement to define models based on season
 
@@ -240,13 +244,13 @@ if(season == "fall") {
   )
 }
 
-cat("DEFINED", length(models), "FOR", toupper(season))
+cat("DEFINED", length(models), "FOR", toupper(season),"\n")
 
 #################################
 # SETUP PARALLEL PROCESSING
 #################################
 
-cat("SETTING UP PARALLEL PROCESSING")
+cat("SETTING UP PARALLEL PROCESSING\n")
 
 # Create cluster - use one worker per model (up to n_cores)
 
@@ -255,7 +259,7 @@ cl <- makeCluster(min(n_cores, length(models)))
 # Calculate threads per model
 
 threads_per_model <- max(1, floor(n_cores / length(models)))
-cat("Using", length(cl), "workers with", threads_per_model, "threads each\n")
+cat("USING", length(cl), "WORKERS WITH", threads_per_model, "THREADS EACH\n")
 
 # Register the cluster as the parallel backend for foreach
 
@@ -263,8 +267,8 @@ registerDoParallel(cl)
 
 # Verify registration
 
-cat("Parallel backend registered:", getDoParName(), "\n")
-cat("Number of workers:", getDoParWorkers(), "\n")
+cat("PARALLEL BACKED REGISTERED", getDoParName(), "\n")
+cat("# OF WORKERS", getDoParWorkers(), "\n")
 
 # Export necessary objects to ALL workers in the cluster
 
@@ -276,13 +280,13 @@ clusterEvalQ(cl, {
   library(mgcv)
 })
 
-cat("PARALLEL WORKERS INTIALIZED")
+cat("PARALLEL WORKERS INTIALIZED\n")
 
 #################################
 #  FITTING MODELS
 #################################
 
-cat("FITTING", length(models), "MODELS IN PARALLEL")
+cat("\nFITTING", length(models), "MODELS IN PARALLEL\n")
 
 # Track timing for each model
 
@@ -383,13 +387,13 @@ results <- foreach(
 }
 
 total_fit_time <- difftime(Sys.time(), model_fit_start, units = "mins")
-cat("MODELS FIT IN", round(total_fit_time, 2), "MINUTES")
+cat("MODELS FIT IN", round(total_fit_time, 2), "MINUTES\n")
 
 #################################
 # PROCESS MODEL RESULTS
 #################################
 
-cat("PROCESSING RESULTS")
+cat("\nPROCESSING RESULTS\n")
 
 # Creating data frame with all model results
 
@@ -410,13 +414,13 @@ for(i in seq_along(results)) {
 # Stop the cluster when done
 
 stopCluster(cl)
-cat("ANALYSIS COMPLETE; PARALLEL STRUCTURE STOPPED")
+cat("ANALYSIS COMPLETE; PARALLEL STRUCTURE STOPPED\n")
 
 #################################
 # MODEL COMPARISON 
 #################################
 
-cat("MODEL COMPARISON RESULTS")
+cat("\nMODEL COMPARISON RESULTS\n")
 
 # Sort by AIC (best model first)
 
@@ -432,14 +436,14 @@ model_results$aic_weight <- exp(-0.5 * model_results$delta_aic) / sum(exp(-0.5 *
 
 # Print results table
 
-cat("\nMODEL COMPARISON TABLE (sorted by AIC):\n")
+cat("MODEL COMPARISON TABLE (sorted by AIC):\n")
 print(model_results[, c("model", "aic", "delta_aic", "aic_weight", "r_squared", "dev_explained", "edf", "fitting_time")])
 
 #################################
 # SAVE RESULTS
 #################################
 
-cat("SAVING RESULTS")
+cat("\nSAVING RESULTS\n")
 
 # Save all fitted models
 
@@ -457,6 +461,6 @@ cat("MODEL COMPARISON SAVED", comparison_file)
 
 best_model_file <- file.path(output_dir, paste0(season, "_best_model.rds"))
 saveRDS(fitted_models[[best_model]], best_model_file)
-cat("TOP MODEL SAVED", best_model_file)
+cat("TOP MODEL SAVED", best_model_file, "\n")
 
-cat("GAMS COMPLETE! RESULTS SAVED TO:", output_dir)
+cat("\nGAMS COMPLETE! RESULTS SAVED TO:", output_dir, "\n")
