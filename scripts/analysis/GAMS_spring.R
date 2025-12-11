@@ -386,12 +386,12 @@ total_fit_time <- difftime(Sys.time(), model_fit_start, units = "mins")
 cat("MODELS FIT IN", round(total_fit_time, 2), "MINUTES")
 
 #################################
-# PROCESS RESULTS - WIP
+# PROCESS MODEL RESULTS
 #################################
 
-cat("\n", paste(rep("=", 50), collapse=""), "\n")
-cat("PROCESSING RESULTS\n")
-cat(paste(rep("=", 50), collapse=""), "\n")
+cat("PROCESSING RESULTS")
+
+# Creating data frame with all model results
 
 fitted_models <- list()
 model_results <- data.frame()
@@ -402,69 +402,61 @@ for(i in seq_along(results)) {
   if(results[[i]]$success) {
     fitted_models[[model_name]] <- results[[i]]$model
     model_results <- rbind(model_results, results[[i]]$stats)
-    
-    cat("✓", toupper(model_name), "- AIC:", round(results[[i]]$stats$aic, 2),
-        "R²:", round(results[[i]]$stats$r_squared, 3),
-        "Time:", round(results[[i]]$stats$fitting_time, 2), "min\n")
   } else {
-    cat("✗", toupper(model_name), "- FAILED:", results[[i]]$error, "\n")
     model_results <- rbind(model_results, results[[i]]$stats)
   }
 }
 
 # Stop the cluster when done
+
 stopCluster(cl)
-cat("\nParallel cluster stopped\n")
+cat("ANALYSIS COMPLETE; PARALLEL STRUCTURE STOPPED")
 
 #################################
-# MODEL COMPARISON AND RESULTS
+# MODEL COMPARISON 
 #################################
 
-cat("\n", paste(rep("=", 50), collapse=""), "\n")
-cat("MODEL COMPARISON RESULTS\n")
-cat(paste(rep("=", 50), collapse=""), "\n")
+cat("MODEL COMPARISON RESULTS")
 
 # Sort by AIC (best model first)
+
 model_results <- model_results[order(model_results$aic, na.last = TRUE), ]
 
-# Calculate AIC differences
+# Calculate delta AIC
+
 model_results$delta_aic <- model_results$aic - min(model_results$aic, na.rm = TRUE)
 
 # Calculate AIC weights
+
 model_results$aic_weight <- exp(-0.5 * model_results$delta_aic) / sum(exp(-0.5 * model_results$delta_aic), na.rm = TRUE)
 
 # Print results table
+
 cat("\nMODEL COMPARISON TABLE (sorted by AIC):\n")
 print(model_results[, c("model", "aic", "delta_aic", "aic_weight", "r_squared", "dev_explained", "edf", "fitting_time")])
-
-# Identify best model
-best_model <- model_results$model[1]
-cat("\nBEST MODEL:", toupper(best_model), "\n")
-cat("AIC:", round(model_results$aic[1], 2), "\n")
-cat("R²:", round(model_results$r_squared[1], 3), "\n")
-cat("Deviance explained:", round(model_results$dev_explained[1], 3), "\n")
 
 #################################
 # SAVE RESULTS
 #################################
 
-cat("\nSaving model comparison results...\n")
+cat("SAVING RESULTS")
 
 # Save all fitted models
+
 models_file <- file.path(output_dir, paste0(season, "_all_models.rds"))
 saveRDS(fitted_models, models_file)
-cat("All models saved:", models_file, "\n")
+cat("ALL MODELS SAVED", models_file)
 
 # Save comparison results
+
 comparison_file <- file.path(output_dir, paste0(season, "_model_comparison.csv"))
 write.csv(model_results, comparison_file, row.names = FALSE)
-cat("Comparison results saved:", comparison_file, "\n")
+cat("MODEL COMPARISON SAVED", comparison_file)
 
 # Save best model separately
-if(best_model %in% names(fitted_models)) {
-  best_model_file <- file.path(output_dir, paste0(season, "_best_model.rds"))
-  saveRDS(fitted_models[[best_model]], best_model_file)
-  cat("Best model saved:", best_model_file, "\n")
-}
 
-cat("\nGAM model comparison complete! Results saved in:", output_dir, "\n")
+best_model_file <- file.path(output_dir, paste0(season, "_best_model.rds"))
+saveRDS(fitted_models[[best_model]], best_model_file)
+cat("TOP MODEL SAVED", best_model_file)
+
+cat("GAMS COMPLETE! RESULTS SAVED TO:", output_dir)
