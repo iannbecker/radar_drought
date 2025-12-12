@@ -250,7 +250,7 @@ cat("DEFINED", length(models), "FOR", toupper(season),"\n")
 # SETUP PARALLEL PROCESSING
 #################################
 
-cat("SETTING UP PARALLEL PROCESSING\n")
+cat("\nSETTING UP PARALLEL PROCESSING\n")
 
 # Create cluster - use one worker per model (up to n_cores)
 
