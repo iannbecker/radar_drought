@@ -8,6 +8,7 @@
 
 library(sf)
 library(ggplot2)
+library(ggspatial)
 library(dplyr)
 library(tigris)
 library(viridis)
@@ -137,14 +138,20 @@ p <- ggplot() +
   geom_sf_text(data = radar_locations, aes(label = site), 
               size = 2, fontface = "bold") + # Radar labels
   scale_fill_viridis_d(option = "turbo", name = "Ecoregion") +
+  coord_sf(datum = st_crs(study_area)) +
   theme_minimal(base_size = 13) +
   theme(
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 6),
     legend.text = element_text(size = 6),
     panel.grid = element_blank(),
-    axis.text = element_blank(),
-    axis.title = element_blank()
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 10)
+  ) +
+  annotation_scale(location = "tr", width_hint = 0.3) +
+  labs(
+    x = "Longitude",
+    y = "Latitude"
   ) +
   guides(fill = guide_legend(
     nrow = 5, 
