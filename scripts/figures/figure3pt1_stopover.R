@@ -27,7 +27,7 @@ setwd("/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGr
 #################################
 
 # SELECT EXEMPLAR YEARS
-fall_drought_year <- 2011  # Extremely dry fall
+fall_drought_year <- 2010  # Extremely dry fall
 fall_wet_year <- 2015      # Wet fall
 spring_drought_year <- 2006  # Dry spring
 spring_wet_year <- 2010     # Wet spring
@@ -35,7 +35,7 @@ spring_wet_year <- 2010     # Wet spring
 # File paths
 fall_stopover_file <- "raster_data/stopover_fall.tif"
 spring_stopover_file <- "raster_data/stopover_spring.tif"
-fall_spei_file <- "raster_data/cropped_rasters/fall_raster/SPEI_1995_2020.tif"  
+fall_spei_file <- "SPEI_fall_1995_2020_250m.tif"  
 spring_spei_file <- "raster_data/cropped_rasters/spring_raster/SPEI_spring_1995_2020.tif"
 bcr_gdb <- "NABCI_ecoregion.gdb"
 
