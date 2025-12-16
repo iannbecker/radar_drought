@@ -11,7 +11,7 @@ library(gratia)
 library(ggplot2)
 library(dplyr)
 
-model_dir <- "PATH HERE"
+model_dir <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar/GAMs"
 
 #################################
 # Data prep
@@ -171,7 +171,16 @@ plot_file <- file.path(model_dir, "spring_nlcd_drought_interaction_alpha.png")
 ggsave(plot_file, p, width = 12, height = 8, dpi = 300)
 cat("NLCD plot saved:", plot_file, "\n")
 
-# Faceted version for supplementary
+# Create letter labels for facets
+
+nlcd_levels <- levels(nlcd_smooth$nlcd_alpha)
+
+facet_labels <- setNames(
+  paste0("(", letters[seq_along(nlcd_levels)], ") ", nlcd_levels),
+  nlcd_levels
+)
+
+# Faceted plot
 
 p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
   geom_line(aes(color = nlcd_alpha), linewidth = 1) +
@@ -179,7 +188,12 @@ p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
                   ymax = estimate + 2*se, 
                   fill = nlcd_alpha), 
               alpha = 0.2) +
-  facet_wrap(~nlcd_alpha, scales = "free_y", ncol = 4) +
+  facet_wrap(
+    ~ nlcd_alpha,
+    scales = "free_y",
+    ncol = 4,
+    labeller = labeller(nlcd_alpha = facet_labels)
+  ) +
   scale_color_hue(name = "Habitat Type") +
   theme_minimal(base_size = 12) +
   labs(x = "SPEI", y = "Effect on Stopover Density") +
