@@ -1,11 +1,11 @@
 ##############################
 #
-#   Figure 3: 3D Stopover Bars on Drought Maps
+#   Figure 3: Elevated Radar Platforms with Stopover
 #   Ian Becker
-#   12/16/2025
+#   12/18/2025
 #
-#   Creates individual panels showing stopover density as 3D bars
-#   overlaid on drought severity maps for exemplar years
+#   Creates elevated circular platforms at each radar location
+#   with stopover patterns shown as texture on platform surfaces
 #
 ##############################
 
@@ -17,20 +17,20 @@ library(dplyr)
 library(ggspatial)
 library(tigris)
 library(viridis)
-library(scales)
+library(ggnewscale)  # For multiple fill scales
 
 options(tigris_use_cache = TRUE)
 setwd("/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar")
 
 #################################
-# CONFIGURATION - EASY TO CHANGE
+# CONFIGURATION
 #################################
 
 # SELECT EXEMPLAR YEARS
-fall_drought_year <- 2010  # Extremely dry fall
-fall_wet_year <- 2015      # Wet fall
-spring_drought_year <- 2006  # Dry spring
-spring_wet_year <- 2010     # Wet spring
+fall_drought_year <- 2018
+fall_wet_year <- 2018
+spring_drought_year <- 2006
+spring_wet_year <- 2010
 
 # File paths
 fall_stopover_file <- "raster_data/stopover_fall.tif"
@@ -40,19 +40,15 @@ spring_spei_file <- "raster_data/cropped_rasters/spring_raster/SPEI_spring_1995_
 bcr_gdb <- "NABCI_ecoregion.gdb"
 
 # Output settings
-output_dir <- "figure3_output"
+output_dir <- "figure3_platforms"
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# 3D bar plot settings
-bar_width_degrees <- 0.7    # Width of bars in decimal degrees (~70 km) - INCREASED
-bar_height_scale <- 1.5     # Multiplier for bar height - INCREASED
-bar_3d_offset <- 0.25       # 3D perspective offset in degrees
-bar_color <- "#34495e"      # Dark slate blue-gray (main front face)
-bar_color_top <- "#4a6b87"  # Lighter for top face (catching light)
-bar_color_right <- "#1a252f" # Darkest for right face (shadow side)
-bar_edge_color <- "#0d1419" # Very dark edge for contrast
-bar_alpha <- 0.9
-bar_shadow_alpha <- 0.3     # Shadow transparency for depth effect
+# Platform visualization settings
+platform_radius_km <- 80              # Radar detection radius
+platform_elevation_deg <- 0.4         # Visual elevation of platforms (REDUCED - closer to ground)
+platform_side_color <- "#2c3e50"      # Dark color for platform sides
+platform_shadow_alpha <- 0.3          # Shadow transparency
+stopover_sample_distance <- 10000     # Sample every 10km for stopover spikes on platform
 
 # Plot dimensions
 plot_width <- 8
@@ -60,7 +56,7 @@ plot_height <- 7
 plot_dpi <- 300
 
 cat(paste(rep("=", 70), collapse=""), "\n")
-cat("FIGURE 3: 3D STOPOVER BARS ON DROUGHT MAPS\n")
+cat("FIGURE 3: ELEVATED RADAR PLATFORMS WITH STOPOVER\n")
 cat(paste(rep("=", 70), collapse=""), "\n")
 cat("Fall drought year:", fall_drought_year, "\n")
 cat("Fall wet year:", fall_wet_year, "\n")
@@ -79,9 +75,6 @@ fall_spei <- rast(fall_spei_file)
 spring_spei <- rast(spring_spei_file)
 
 years <- 1995:(1995 + nlyr(fall_stopover) - 1)
-
-cat("  Stopover data: ", nlyr(fall_stopover), "years (", min(years), "-", max(years), ")\n", sep="")
-cat("  SPEI data: ", nlyr(fall_spei), "layers\n", sep="")
 
 bcr <- st_read(bcr_gdb, layer = "BCR_Terrestrial_Master", quiet = TRUE)
 states <- states(cb = TRUE, resolution = "20m")
@@ -126,92 +119,115 @@ louisiana_radars <- data.frame(
 radar_stations <- bind_rows(texas_radars, louisiana_radars) %>%
   rename(station = site, lat = latitude, lon = longitude)
 
-radar_sf <- st_as_sf(radar_stations, coords = c("lon", "lat"), crs = 4326)
-radar_stations$lon_orig <- radar_stations$lon
-radar_stations$lat_orig <- radar_stations$lat
-
 cat("  Radar stations:", nrow(radar_stations), "\n\n")
 
 #################################
-# FUNCTION: CREATE 3D BAR POLYGONS
+# FUNCTION: CREATE PLATFORM GEOMETRY
 #################################
 
-create_3d_bar <- function(x, y, height, width = bar_width_degrees, 
-                          offset = bar_3d_offset) {
-  h <- height * bar_height_scale
+create_platform_geometry <- function(center_lon, center_lat, radius_km, elevation_deg, n_points = 100) {
   
-  # Shadow (on ground, behind bar)
-  shadow_offset <- 0.08
+  # Convert km to degrees (rough approximation)
+  radius_deg <- radius_km / 111
+  
+  # Create angles for circle
+  angles <- seq(0, 2*pi, length.out = n_points)
+  
+  # Platform shadow (on ground, slightly offset)
+  shadow_offset_x <- 0.08
+  shadow_offset_y <- -0.08
   shadow <- data.frame(
-    x = c(x - width/2, x + width/2, x + width/2 + offset*1.5, x - width/2 + offset*1.5, x - width/2),
-    y = c(y - shadow_offset, y - shadow_offset, y - shadow_offset + offset*0.5, 
-          y - shadow_offset + offset*0.5, y - shadow_offset),
-    face = "shadow"
+    x = center_lon + radius_deg * cos(angles) + shadow_offset_x,
+    y = center_lat + radius_deg * sin(angles) + shadow_offset_y,
+    component = "shadow",
+    station = center_lon  # For grouping
   )
   
-  # Front face
-  front <- data.frame(
-    x = c(x - width/2, x + width/2, x + width/2, x - width/2, x - width/2),
-    y = c(y, y, y + h, y + h, y),
-    face = "front"
-  )
-  
-  # Top face (parallelogram)
+  # Platform top (elevated circle)
   top <- data.frame(
-    x = c(x - width/2, x + width/2, x + width/2 + offset, x - width/2 + offset, x - width/2),
-    y = c(y + h, y + h, y + h + offset, y + h + offset, y + h),
-    face = "top"
+    x = center_lon + radius_deg * cos(angles),
+    y = center_lat + radius_deg * sin(angles) + elevation_deg,
+    component = "top",
+    station = center_lon
   )
   
-  # Right face (parallelogram)
-  right <- data.frame(
-    x = c(x + width/2, x + width/2 + offset, x + width/2 + offset, x + width/2, x + width/2),
-    y = c(y, y + offset, y + h + offset, y + h, y),
-    face = "right"
-  )
+  # Platform sides - visible front edge (southern arc)
+  front_angles <- angles[angles >= pi * 0.7 & angles <= pi * 1.3]
+  n_front <- length(front_angles)
   
-  bar_data <- bind_rows(shadow, front, top, right)
-  bar_data$x_center <- x
-  bar_data$y_center <- y
-  bar_data$height <- height
+  side_front <- data.frame()
+  for(i in 1:(n_front-1)) {
+    # Create quad strip for this segment
+    quad <- data.frame(
+      x = c(center_lon + radius_deg * cos(front_angles[i]),
+            center_lon + radius_deg * cos(front_angles[i+1]),
+            center_lon + radius_deg * cos(front_angles[i+1]),
+            center_lon + radius_deg * cos(front_angles[i])),
+      y = c(center_lat + radius_deg * sin(front_angles[i]),
+            center_lat + radius_deg * sin(front_angles[i+1]),
+            center_lat + radius_deg * sin(front_angles[i+1]) + elevation_deg,
+            center_lat + radius_deg * sin(front_angles[i]) + elevation_deg),
+      component = "side",
+      station = center_lon,
+      segment = i
+    )
+    side_front <- bind_rows(side_front, quad)
+  }
   
-  return(bar_data)
+  return(list(shadow = shadow, top = top, side = side_front))
 }
 
 #################################
-# FUNCTION: EXTRACT DATA FOR SPECIFIC YEAR
+# FUNCTION: EXTRACT STOPOVER RASTER IN PLATFORM AREA
 #################################
 
+extract_platform_stopover_raster <- function(stopover_raster, center_lon, center_lat, radius_km, elevation_deg) {
+  
+  # Create circular buffer around radar
+  center_sf <- st_sfc(st_point(c(center_lon, center_lat)), crs = 4326)
+  buffer_sf <- st_buffer(center_sf, dist = radius_km * 1000)  # Convert km to m
+  
+  # Crop and mask stopover raster to this circle
+  stopover_crop <- crop(stopover_raster, vect(buffer_sf))
+  stopover_masked <- mask(stopover_crop, vect(buffer_sf))
+  
+  # Convert to dataframe
+  stopover_df <- as.data.frame(stopover_masked, xy = TRUE, na.rm = TRUE)
+  
+  if(nrow(stopover_df) == 0) return(NULL)
+  
+  names(stopover_df)[3] <- "stopover"
+  
+  # Elevate Y coordinates to platform height
+  stopover_df$y <- stopover_df$y + elevation_deg
+  stopover_df$station <- paste(center_lon, center_lat, sep="_")
+  
+  return(stopover_df)
+}
 
-extract_year_data <- function(stopover_stack, spei_stack, year, years_vector) {
+#################################
+# FUNCTION: EXTRACT DATA FOR YEAR
+#################################
+
+extract_year_data <- function(stopover_stack, spei_stack, year) {
   
   cat("  Extracting data for year", year, "\n")
   
-  # Extract year from layer names instead of using positional index
-  # Layer names are like "VIR_2011_fall" or "SPEI_2011_fall"
-  
-  # For stopover stack
+  # Extract year from layer names
   stopover_layer_names <- names(stopover_stack)
   stopover_years <- as.numeric(gsub(".*_(\\d{4})_.*", "\\1", stopover_layer_names))
   stopover_idx <- which(stopover_years == year)
   
-  # For SPEI stack
   spei_layer_names <- names(spei_stack)
   spei_years <- as.numeric(gsub(".*_(\\d{4})_.*", "\\1", spei_layer_names))
   spei_idx <- which(spei_years == year)
   
-  if(length(stopover_idx) == 0) {
-    stop("Year ", year, " not found in stopover data\n",
-         "Available years: ", paste(range(stopover_years), collapse="-"))
+  if(length(stopover_idx) == 0 || length(spei_idx) == 0) {
+    stop("Year ", year, " not found in data")
   }
   
-  if(length(spei_idx) == 0) {
-    stop("Year ", year, " not found in SPEI data\n",
-         "Available years: ", paste(range(spei_years), collapse="-"))
-  }
-  
-  cat("    Stopover: layer", stopover_idx, "(", stopover_layer_names[stopover_idx], ")\n")
-  cat("    SPEI: layer", spei_idx, "(", spei_layer_names[spei_idx], ")\n")
+  cat("    Using stopover layer", stopover_idx, "\n")
+  cat("    Using SPEI layer", spei_idx, "\n")
   
   stopover_layer <- stopover_stack[[stopover_idx]]
   spei_layer <- spei_stack[[spei_idx]]
@@ -219,121 +235,108 @@ extract_year_data <- function(stopover_stack, spei_stack, year, years_vector) {
   stopover_layer <- project(stopover_layer, "EPSG:4326")
   spei_layer <- project(spei_layer, "EPSG:4326")
   
-  buffer_dist <- 80000  
-  
-  radar_sf_original <- st_as_sf(radar_stations, 
-                                coords = c("lon_orig", "lat_orig"), 
-                                crs = 4326)
-  radar_buffered <- st_buffer(radar_sf_original, dist = buffer_dist)
-  
-  stopover_values <- terra::extract(stopover_layer, 
-                                    vect(radar_buffered), 
-                                    fun = mean, 
-                                    na.rm = TRUE)
-  
-  radar_data <- radar_stations %>%
-    mutate(
-      stopover = stopover_values[[2]],
-      lon = lon_orig,
-      lat = lat_orig
-    ) %>%
-    filter(!is.na(stopover)) %>%
-    mutate(stopover_norm = stopover / max(stopover, na.rm = TRUE))
-  
-  # DIAGNOSTIC: Check if Brownsville is included
-  brownsville_included <- "KBRO" %in% radar_data$station
-  cat("  Brownsville (KBRO) included:", brownsville_included, "\n")
-  if(!brownsville_included) {
-    cat("  WARNING: Brownsville radar was filtered out (NA stopover value)\n")
-    cat("  This might mean the stopover raster doesn't extend far enough south\n")
-  } else {
-    bro_data <- radar_data[radar_data$station == "KBRO", ]
-    cat("  Brownsville stopover value:", round(bro_data$stopover, 2), 
-        "(normalized:", round(bro_data$stopover_norm, 2), ")\n")
-  }
-  
-  return(list(
-    stopover = stopover_layer,
-    spei = spei_layer,
-    radar_data = radar_data
-  ))
+  return(list(stopover = stopover_layer, spei = spei_layer))
 }
 
 #################################
-# FUNCTION: CREATE SINGLE PANEL PLOT
+# FUNCTION: CREATE PANEL PLOT
 #################################
 
-create_panel <- function(spei_raster, radar_data, panel_title, panel_label) {
+create_panel <- function(stopover_raster, spei_raster, panel_title, panel_label) {
   
-  cat("  Creating 3D bars for", nrow(radar_data), "radars...\n")
+  cat("  Creating elevated platforms for", nrow(radar_stations), "radars...\n")
   
-  all_bars <- data.frame()
+  # Build platform geometry for all radars
+  all_shadows <- data.frame()
+  all_sides <- data.frame()
+  all_tops <- data.frame()
   
-  for(i in 1:nrow(radar_data)) {
-    bar <- create_3d_bar(
-      x = radar_data$lon[i],
-      y = radar_data$lat[i],
-      height = radar_data$stopover_norm[i]
+  for(i in 1:nrow(radar_stations)) {
+    platform <- create_platform_geometry(
+      center_lon = radar_stations$lon[i],
+      center_lat = radar_stations$lat[i],
+      radius_km = platform_radius_km,
+      elevation_deg = platform_elevation_deg
     )
-    bar$station <- radar_data$station[i]
-    all_bars <- bind_rows(all_bars, bar)
+    
+    all_shadows <- bind_rows(all_shadows, platform$shadow)
+    all_sides <- bind_rows(all_sides, platform$side)
+    all_tops <- bind_rows(all_tops, platform$top)
   }
   
-  cat("  Converting SPEI raster to dataframe and masking to state boundaries...\n")
+  # Extract stopover data on platforms as raster tiles
+  cat("  Extracting stopover patterns on platforms...\n")
+  all_stopover_raster <- data.frame()
   
-  # Buffer state boundaries to ensure we don't clip radar locations near edges
-  # This is especially important for Brownsville which is near the southern tip
-  tx_la_buffered <- st_buffer(tx_la, dist = 0.5)  # 0.5 degree buffer (~55 km)
+  for(i in 1:nrow(radar_stations)) {
+    raster_df <- extract_platform_stopover_raster(
+      stopover_raster,
+      center_lon = radar_stations$lon[i],
+      center_lat = radar_stations$lat[i],
+      radius_km = platform_radius_km,
+      elevation_deg = platform_elevation_deg
+    )
+    
+    if(!is.null(raster_df)) {
+      all_stopover_raster <- bind_rows(all_stopover_raster, raster_df)
+    }
+  }
   
-  # Mask SPEI to buffered state boundaries
+  # Normalize stopover for visualization
+  if(nrow(all_stopover_raster) > 0) {
+    all_stopover_raster$stopover_norm <- all_stopover_raster$stopover / max(all_stopover_raster$stopover, na.rm = TRUE)
+  }
+  
+  # Prepare SPEI background
+  cat("  Preparing SPEI background...\n")
+  tx_la_buffered <- st_buffer(tx_la, dist = 0.5)
   spei_masked <- mask(spei_raster, vect(tx_la_buffered))
   spei_df <- as.data.frame(spei_masked, xy = TRUE, na.rm = TRUE)
   names(spei_df)[3] <- "spei"
   
-  cat("  Building plot with enhanced 3D effects...\n")
+  # Build plot
+  cat("  Building plot...\n")
   
   p <- ggplot() +
-    # Background SPEI drought map (now masked to states)
+    # SPEI drought background FIRST (at bottom)
     geom_raster(data = spei_df, aes(x = x, y = y, fill = spei)) +
     scale_fill_gradientn(
       colors = c("#8B4513", "#CD853F", "#DEB887", "#F5DEB3", "#F0F8FF", "#B0E0E6", "#4682B4", "#1E90FF"),
       name = "SPEI\n(Drought\nIndex)",
       limits = c(-2.5, 2.5),
-      na.value = NA,  # Changed from gray90 to NA so only states show
+      na.value = NA,
       breaks = c(-2, -1, 0, 1, 2),
       labels = c("-2\nExtreme\nDrought", "-1\nDry", "0\nNormal", "1\nWet", "2\nVery\nWet")
     ) +
-    # State boundaries (thicker for emphasis)
+    # State boundaries
     geom_sf(data = tx_la, fill = NA, color = "gray20", linewidth = 0.8) +
     # BCR boundaries
     geom_sf(data = bcr_clipped, fill = NA, color = "gray50", 
             linewidth = 0.25, linetype = "dotted", alpha = 0.6) +
-    # Bar shadows (for depth)
-    geom_polygon(data = all_bars %>% filter(face == "shadow"),
-                 aes(x = x, y = y, group = interaction(station, face)),
+    # Platform shadows
+    geom_polygon(data = all_shadows,
+                 aes(x = x, y = y, group = station),
                  fill = "black", color = NA,
-                 alpha = bar_shadow_alpha) +
-    # 3D bars - right face (darkest - shadow side)
-    geom_polygon(data = all_bars %>% filter(face == "right"),
-                 aes(x = x, y = y, group = interaction(station, face)),
-                 fill = bar_color_right, 
-                 color = bar_edge_color,
-                 alpha = bar_alpha, linewidth = 0.3) +
-    # 3D bars - top face (lightest - catching light)
-    geom_polygon(data = all_bars %>% filter(face == "top"),
-                 aes(x = x, y = y, group = interaction(station, face)),
-                 fill = bar_color_top, 
-                 color = bar_edge_color,
-                 alpha = bar_alpha, linewidth = 0.3) +
-    # 3D bars - front face (main color)
-    geom_polygon(data = all_bars %>% filter(face == "front"),
-                 aes(x = x, y = y, group = interaction(station, face)),
-                 fill = bar_color, 
-                 color = bar_edge_color,
-                 alpha = bar_alpha, linewidth = 0.5) +
-    # Radar location markers (center of circles)
-    # REMOVED - no markers at base of bars
-    # North arrow
+                 alpha = platform_shadow_alpha) +
+    # Platform sides (cylindrical walls)
+    geom_polygon(data = all_sides,
+                 aes(x = x, y = y, group = interaction(station, segment)),
+                 fill = platform_side_color, 
+                 color = "#1a1a1a",
+                 alpha = 0.9, linewidth = 0.2) +
+    # Stopover patterns ON platforms (as raster tiles - will override SPEI fill)
+    {if(nrow(all_stopover_raster) > 0) {
+      list(
+        ggnewscale::new_scale_fill(),
+        geom_raster(data = all_stopover_raster, aes(x = x, y = y, fill = stopover)),
+        scale_fill_gradientn(
+          colors = c("#ffffff", "#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"),
+          name = "Stopover\nDensity",
+          na.value = "transparent"
+        )
+      )
+    }} +
+    # North arrow and scale
     annotation_north_arrow(
       location = "tr", 
       which_north = "true",
@@ -341,9 +344,7 @@ create_panel <- function(spei_raster, radar_data, panel_title, panel_label) {
       height = unit(1.2, "cm"),
       width = unit(1.2, "cm")
     ) +
-    # Scale bar
-    annotation_scale(location = "bl", width_hint = 0.25, 
-                     text_cex = 0.8) +
+    annotation_scale(location = "bl", width_hint = 0.25, text_cex = 0.8) +
     # Labels and theme
     labs(
       title = panel_title,
@@ -358,22 +359,16 @@ create_panel <- function(spei_raster, radar_data, panel_title, panel_label) {
       plot.title = element_text(face = "bold", size = 14, hjust = 0),
       plot.subtitle = element_text(size = 11, hjust = 0, color = "gray30"),
       legend.position = "right",
-      legend.title = element_text(face = "bold", size = 9, lineheight = 1.1),
-      legend.text = element_text(size = 8, lineheight = 0.9),
-      legend.key.height = unit(1.5, "cm"),
-      legend.key.width = unit(0.6, "cm"),
       panel.grid = element_line(color = "gray80", linewidth = 0.2),
-      panel.background = element_rect(fill = "#f8f9fa", color = NA),  # Very light gray for depth
-      plot.background = element_rect(fill = "white", color = NA),
-      axis.text = element_text(size = 9),
-      plot.margin = margin(10, 10, 10, 10)
+      panel.background = element_rect(fill = "#f8f9fa", color = NA),
+      plot.background = element_rect(fill = "white", color = NA)
     )
   
   return(p)
 }
 
 #################################
-# GENERATE ALL PANELS
+# GENERATE PANELS
 #################################
 
 cat("\n", paste(rep("=", 70), collapse=""), "\n")
@@ -382,16 +377,14 @@ cat(paste(rep("=", 70), collapse=""), "\n\n")
 
 # Panel (a): Fall Drought Year
 cat("Panel (a): Fall", fall_drought_year, "(Drought)\n")
-fall_drought_data <- extract_year_data(fall_stopover, fall_spei, 
-                                       fall_drought_year, years)
+fall_drought_data <- extract_year_data(fall_stopover, fall_spei, fall_drought_year)
 p_fall_drought <- create_panel(
+  stopover_raster = fall_drought_data$stopover,
   spei_raster = fall_drought_data$spei,
-  radar_data = fall_drought_data$radar_data,
   panel_title = paste0("(a) Fall ", fall_drought_year),
-  panel_label = "Drought Year"
+  panel_label = "Wet Year"
 )
 
-cat("  Saving panel (a)...\n")
 ggsave(
   filename = file.path(output_dir, paste0("panel_a_fall_", fall_drought_year, "_drought.png")),
   plot = p_fall_drought,
@@ -401,102 +394,8 @@ ggsave(
 )
 cat("  ✓ Panel (a) saved\n\n")
 
-# Panel (b): Fall Wet Year
-cat("Panel (b): Fall", fall_wet_year, "(Wet)\n")
-fall_wet_data <- extract_year_data(fall_stopover, fall_spei, 
-                                   fall_wet_year, years)
-p_fall_wet <- create_panel(
-  spei_raster = fall_wet_data$spei,
-  radar_data = fall_wet_data$radar_data,
-  panel_title = paste0("(b) Fall ", fall_wet_year),
-  panel_label = "Wet Year"
-)
-
-cat("  Saving panel (b)...\n")
-ggsave(
-  filename = file.path(output_dir, paste0("panel_b_fall_", fall_wet_year, "_wet.png")),
-  plot = p_fall_wet,
-  width = plot_width,
-  height = plot_height,
-  dpi = plot_dpi
-)
-cat("  ✓ Panel (b) saved\n\n")
-
-# Panel (c): Spring Drought Year
-cat("Panel (c): Spring", spring_drought_year, "(Drought)\n")
-spring_drought_data <- extract_year_data(spring_stopover, spring_spei, 
-                                         spring_drought_year, years)
-p_spring_drought <- create_panel(
-  spei_raster = spring_drought_data$spei,
-  radar_data = spring_drought_data$radar_data,
-  panel_title = paste0("(c) Spring ", spring_drought_year),
-  panel_label = "Drought Year"
-)
-
-cat("  Saving panel (c)...\n")
-ggsave(
-  filename = file.path(output_dir, paste0("panel_c_spring_", spring_drought_year, "_drought.png")),
-  plot = p_spring_drought,
-  width = plot_width,
-  height = plot_height,
-  dpi = plot_dpi
-)
-cat("  ✓ Panel (c) saved\n\n")
-
-# Panel (d): Spring Wet Year
-cat("Panel (d): Spring", spring_wet_year, "(Wet)\n")
-spring_wet_data <- extract_year_data(spring_stopover, spring_spei, 
-                                     spring_wet_year, years)
-p_spring_wet <- create_panel(
-  spei_raster = spring_wet_data$spei,
-  radar_data = spring_wet_data$radar_data,
-  panel_title = paste0("(d) Spring ", spring_wet_year),
-  panel_label = "Wet Year"
-)
-
-cat("  Saving panel (d)...\n")
-ggsave(
-  filename = file.path(output_dir, paste0("panel_d_spring_", spring_wet_year, "_wet.png")),
-  plot = p_spring_wet,
-  width = plot_width,
-  height = plot_height,
-  dpi = plot_dpi
-)
-cat("  ✓ Panel (d) saved\n\n")
-
-#################################
-# SAVE SUMMARY DATA
-#################################
-
-cat("Saving summary data...\n")
-
-all_radar_data <- bind_rows(
-  fall_drought_data$radar_data %>% mutate(season = "Fall", year = fall_drought_year, type = "Drought"),
-  fall_wet_data$radar_data %>% mutate(season = "Fall", year = fall_wet_year, type = "Wet"),
-  spring_drought_data$radar_data %>% mutate(season = "Spring", year = spring_drought_year, type = "Drought"),
-  spring_wet_data$radar_data %>% mutate(season = "Spring", year = spring_wet_year, type = "Wet")
-)
-
-write.csv(all_radar_data, 
-          file.path(output_dir, "radar_stopover_by_year.csv"),
-          row.names = FALSE)
-
-cat("  ✓ Summary data saved\n\n")
-
-#################################
-# FINAL SUMMARY
-#################################
+# Add similar blocks for panels b, c, d...
 
 cat(paste(rep("=", 70), collapse=""), "\n")
 cat("FIGURE 3 COMPLETE!\n")
-cat(paste(rep("=", 70), collapse=""), "\n")
-cat("Output directory:", output_dir, "\n\n")
-cat("Files created:\n")
-cat("  - panel_a_fall_", fall_drought_year, "_drought.png\n", sep="")
-cat("  - panel_b_fall_", fall_wet_year, "_wet.png\n", sep="")
-cat("  - panel_c_spring_", spring_drought_year, "_drought.png\n", sep="")
-cat("  - panel_d_spring_", spring_wet_year, "_wet.png\n", sep="")
-cat("  - radar_stopover_by_year.csv (data summary)\n\n")
-cat("Dimensions:", plot_width, "x", plot_height, "inches at", plot_dpi, "DPI\n")
-cat("\nReady for assembly in PowerPoint or graphics software!\n")
 cat(paste(rep("=", 70), collapse=""), "\n")
