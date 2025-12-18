@@ -11,7 +11,7 @@ library(gratia)
 library(ggplot2)
 library(dplyr)
 
-model_dir <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar/GAMs"
+model_dir <- "PATH HERE"
 
 #################################
 # Data prep
@@ -37,7 +37,7 @@ print(nlcd_lookup)
 
 # Load model
 
-best_model <- readRDS(file.path(model_dir, "spring_best_model.rds")) # change based on season
+best_model <- readRDS(file.path(model_dir, "fall_best_model.rds")) # change based on season
 
 # Extract NLCD smooth terms
 
@@ -167,7 +167,7 @@ p <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate, group = nlcd_a
 
 # Save plot
 
-plot_file <- file.path(model_dir, "spring_nlcd_drought_interaction_alpha.png")
+plot_file <- file.path(model_dir, "fall_nlcd_drought_interaction_alpha.png")
 ggsave(plot_file, p, width = 12, height = 8, dpi = 300)
 cat("NLCD plot saved:", plot_file, "\n")
 
@@ -202,7 +202,7 @@ p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
 
 # Save supplementary faceted plot
 
-facet_file <- file.path(model_dir, "spring_nlcd_drought_faceted_alpha.png")
+facet_file <- file.path(model_dir, "fall_nlcd_drought_faceted_alpha.png")
 ggsave(facet_file, p_facet, width = 14, height = 10, dpi = 300)
 cat("Faceted NLCD plot saved:", facet_file, "\n")
 
