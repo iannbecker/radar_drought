@@ -37,7 +37,7 @@ print(nlcd_lookup)
 
 # Load model
 
-best_model <- readRDS(file.path(model_dir, "fall_best_model.rds")) # change based on season
+best_model <- readRDS(file.path(model_dir, "spring_best_model.rds")) # change based on season
 
 # Extract NLCD smooth terms
 
