@@ -29,7 +29,7 @@ setwd("/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGr
 # SELECT EXEMPLAR YEARS
 fall_drought_year <- 2018
 fall_wet_year <- 2018
-spring_drought_year <- 2006
+spring_drought_year <- 2018
 spring_wet_year <- 2010
 
 # File paths
@@ -302,11 +302,11 @@ create_panel <- function(stopover_raster, spei_raster, panel_title, panel_label)
     geom_raster(data = spei_df, aes(x = x, y = y, fill = spei)) +
     scale_fill_gradientn(
       colors = c("#8B4513", "#CD853F", "#DEB887", "#F5DEB3", "#F0F8FF", "#B0E0E6", "#4682B4", "#1E90FF"),
-      name = "SPEI\n(Drought\nIndex)",
+      name = "SPEI\n(Drought Index)",
       limits = c(-2.5, 2.5),
       na.value = NA,
       breaks = c(-2, -1, 0, 1, 2),
-      labels = c("-2\nExtreme\nDrought", "-1\nDry", "0\nNormal", "1\nWet", "2\nVery\nWet")
+      labels = c("-2 Extreme Drought", "-1 Dry", "0 Normal", "1 Wet", "2 Very Wet")
     ) +
     # State boundaries
     geom_sf(data = tx_la, fill = NA, color = "gray20", linewidth = 0.8) +
@@ -330,7 +330,7 @@ create_panel <- function(stopover_raster, spei_raster, panel_title, panel_label)
         ggnewscale::new_scale_fill(),
         geom_raster(data = all_stopover_raster, aes(x = x, y = y, fill = stopover)),
         scale_fill_gradientn(
-          colors = c("#ffffff", "#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"),
+          colors = c("#fde724", "#7ad151", "#22a884", "#2a788e", "#414487", "#440154"),
           name = "Stopover\nDensity",
           na.value = "transparent"
         )
@@ -359,9 +359,9 @@ create_panel <- function(stopover_raster, spei_raster, panel_title, panel_label)
       plot.title = element_text(face = "bold", size = 14, hjust = 0),
       plot.subtitle = element_text(size = 11, hjust = 0, color = "gray30"),
       legend.position = "right",
-      panel.grid = element_line(color = "gray80", linewidth = 0.2),
-      panel.background = element_rect(fill = "#f8f9fa", color = NA),
-      plot.background = element_rect(fill = "white", color = NA)
+      panel.grid = element_blank(),
+      panel.background = element_blank(),
+      plot.background = element_blank()
     )
   
   return(p)
@@ -385,6 +385,8 @@ p_fall_drought <- create_panel(
   panel_label = "Wet Year"
 )
 
+print(p_fall_drought)
+
 ggsave(
   filename = file.path(output_dir, paste0("panel_a_fall_", fall_drought_year, "_drought.png")),
   plot = p_fall_drought,
@@ -395,6 +397,27 @@ ggsave(
 cat("  ✓ Panel (a) saved\n\n")
 
 # Add similar blocks for panels b, c, d...
+
+# Panel (b): Spring Drought Year
+
+cat("Panel (b): Spring", spring_drought_year, "(Drought)\n")
+spring_drought_data <- extract_year_data(spring_stopover, spring_spei, spring_drought_year)
+p_spring_drought <- create_panel(
+  stopover_raster = spring_drought_data$stopover,
+  spei_raster = spring_drought_data$spei,
+  panel_title = paste0("(b) Spring ", spring_drought_year),
+  panel_label = "Drought Year"
+)
+
+print(p_spring_drought)
+
+ggsave(
+  filename = file.path(output_dir, paste0("panel_b_spring_", spring_drought_year, "_drought.png")),
+  plot = p_spring_drought,
+  width = plot_width,
+  height = plot_height,
+  dpi = plot_dpi
+)
 
 cat(paste(rep("=", 70), collapse=""), "\n")
 cat("FIGURE 3 COMPLETE!\n")
