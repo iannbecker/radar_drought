@@ -21,7 +21,7 @@ setwd("PATH HERE")
 # Load in models 
 
 cat("Loading models...\n")
-fall_model <- readRDS("gam_results/fall_model_comparison/fall_best_model.rds")
+fall_model <- readRDS("/Users/ianbecker/Desktop/project_code/radar_drought/data/fall_best_model_dualpol.rds")
 spring_model <- readRDS("gam_results/spring_model_comparison/spring_best_model.rds")
 
 # Check that models loaded in correctly

@@ -53,7 +53,7 @@ stopover_sample_distance <- 10000     # Sample every 10km for stopover spikes on
 # Plot dimensions
 plot_width <- 8
 plot_height <- 7
-plot_dpi <- 300
+plot_dpi <- 600
 
 cat(paste(rep("=", 70), collapse=""), "\n")
 cat("FIGURE 3: ELEVATED RADAR PLATFORMS WITH STOPOVER\n")
