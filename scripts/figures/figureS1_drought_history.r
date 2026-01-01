@@ -1,10 +1,13 @@
 ##############################
 #
-#   Drought timeseries - Figure 2
+#   Drought timeseries - Figure S1
 #   Ian Becker
 #   11/20/2025
 #
 ##############################
+
+# This script is used to make figure S1 in the supplemental information
+# which is a drought history of our study area from 1995-2020 based on SPEI data
 
 library(terra)
 library(ggplot2)
