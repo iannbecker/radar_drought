@@ -6,6 +6,8 @@
 #
 ##############################
 
+# This script is used to make Figure 5 which shows drought effects by season
+
 library(mgcv)
 library(gratia)
 library(ggplot2)
@@ -21,8 +23,8 @@ setwd("PATH HERE")
 # Load in models 
 
 cat("Loading models...\n")
-fall_model <- readRDS("/Users/ianbecker/Desktop/project_code/radar_drought/data/fall_best_model_dualpol.rds")
-spring_model <- readRDS("gam_results/spring_model_comparison/spring_best_model.rds")
+fall_model <- readRDS("PATH HERE")
+spring_model <- readRDS("PATH HERE")
 
 # Check that models loaded in correctly
 
