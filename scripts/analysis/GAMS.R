@@ -6,6 +6,8 @@
 #
 ##############################
 
+# This script is used to run GAMs for both fall and spring seasons
+
 library(mgcv)
 library(parallel)
 library(doParallel)

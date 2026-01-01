@@ -6,6 +6,9 @@
 #
 ##############################
 
+# This script is used to run random forest for our predictors
+# in order to select interaction terms for our GAMs
+
 library(randomForest)
 library(doParallel)
 library(foreach)
@@ -52,9 +55,7 @@ cat("VARIABLES:", ncol(full_data), "\n")
 # SAMPLE DATA (OPTIONAL)
 #################################
 
-# Set sample_size to a smaller number or use all data
-
-sample_size <- NULL  # Set to NULL to use all data, or specify a number (e.g., 50000)
+sample_size <- NULL  # Set to NULL to use all data
 
 if(!is.null(sample_size) && sample_size < nrow(full_data)) {
   cat("\nSampling data for Random Forest training...\n")
@@ -68,10 +69,12 @@ if(!is.null(sample_size) && sample_size < nrow(full_data)) {
 }
 
 # Get predictor columns
+
 predictor_cols <- names(pooled_data)[!names(pooled_data) %in% c("pixel_id", "stopover", "year")]
 cat("  Predictor variables:", length(predictor_cols), "\n")
 
 # Convert categorical variables to factors
+
 categorical_vars <- c("ecoregion", "NLCD_1995_2020")
 for(var in categorical_vars) {
   if(var %in% names(pooled_data)) {
@@ -87,6 +90,7 @@ for(var in categorical_vars) {
 cat("\nCreating interaction terms...\n")
 
 # Identify key predictors for interactions
+
 drought_vars <- grep("SPEI|drought", predictor_cols, value = TRUE, ignore.case = TRUE)
 climate_vars <- grep("temp|ppt|wind|wetness", predictor_cols, value = TRUE, ignore.case = TRUE)
 habitat_vars <- grep("alan|forest|water|msavi|dcoast", predictor_cols, value = TRUE, ignore.case = TRUE)
@@ -98,18 +102,21 @@ interaction_data <- pooled_data
 n_interactions_created <- 0
 
 # Pairwise interactions
+
 for(i in 1:(length(key_predictors)-1)) {
   for(j in (i+1):length(key_predictors)) {
     var1 <- key_predictors[i]
     var2 <- key_predictors[j]
     
     # Skip if either variable is categorical with too many levels
+    
     if(is.factor(interaction_data[[var1]]) && nlevels(interaction_data[[var1]]) > 10) next
     if(is.factor(interaction_data[[var2]]) && nlevels(interaction_data[[var2]]) > 10) next
     
     interaction_name <- paste0(var1, "_X_", var2)
     
     # Create interaction term
+    
     if(is.numeric(interaction_data[[var1]]) && is.numeric(interaction_data[[var2]])) {
       # Numeric * Numeric
       interaction_data[[interaction_name]] <- interaction_data[[var1]] * interaction_data[[var2]]
@@ -136,7 +143,7 @@ for(i in 1:(length(key_predictors)-1)) {
       }
     }
     
-    # Prevent memory explosion
+    # Prevent too many interactions 
     if(n_interactions_created > 500) {
       cat("Stopping interaction creation at 500 terms to prevent memory issues\n")
       break
@@ -148,9 +155,11 @@ for(i in 1:(length(key_predictors)-1)) {
 cat("Created", n_interactions_created, "interaction terms\n")
 
 # Update dataset
+
 pooled_data <- interaction_data
 
 # Clean interaction terms - remove those with no variation
+
 interaction_cols <- names(pooled_data)[grepl("_X_", names(pooled_data))]
 if(length(interaction_cols) > 0) {
   no_var_interactions <- sapply(pooled_data[interaction_cols], function(x) {
@@ -171,19 +180,23 @@ cat("Total predictors including interactions:",
 # TRAIN RANDOM FOREST MODEL
 #################################
 
-cat("\n", paste(rep("=", 40), collapse=""), "\n")
 cat("TRAINING RANDOM FOREST MODEL\n")
-cat(paste(rep("=", 40), collapse=""), "\n")
+
+# track time 
 
 rf_start_time <- Sys.time()
 
 # Prepare data for RF
+
 final_predictors <- setdiff(names(pooled_data), c("pixel_id", "stopover"))
 rf_data <- pooled_data[, c("stopover", final_predictors)]
 
 # Calculate mtry (variables per split)
+
 mtry <- max(1, floor(sqrt(ncol(rf_data) - 1) * 1.5))
 mtry <- min(mtry, ncol(rf_data) - 1)
+
+# Data check before running 
 
 cat("Training Random Forest with:\n")
 cat("  Observations:", nrow(rf_data), "\n")
@@ -191,7 +204,8 @@ cat("  Predictors:", ncol(rf_data) - 1, "\n")
 cat("  Trees:", ntree, "\n")
 cat("  Variables per split (mtry):", mtry, "\n")
 
-# Train model in parallel
+# Train model in parallel (for cluster work)
+
 rf_model <- foreach(ntree = rep(ceiling(ntree/n_cores), n_cores), 
                     .combine = randomForest::combine,
                     .multicombine = TRUE,
@@ -210,13 +224,14 @@ rf_training_time <- difftime(Sys.time(), rf_start_time, units = "mins")
 # MODEL RESULTS
 #################################
 
-cat("\n", paste(rep("=", 40), collapse=""), "\n")
 cat("RANDOM FOREST RESULTS\n")
-cat(paste(rep("=", 40), collapse=""), "\n")
+
+# Check time to train
 
 cat("Training time:", round(rf_training_time, 2), "minutes\n")
 
 # Extract variable importance
+
 importance_df <- data.frame(
   variable = rownames(importance(rf_model)),
   inc_mse = importance(rf_model)[, "%IncMSE"],
@@ -226,6 +241,7 @@ importance_df <- data.frame(
 importance_df <- importance_df[order(importance_df$inc_mse, decreasing = TRUE), ]
 
 # Separate main effects from interactions
+
 main_effects <- importance_df[!grepl("_X_", importance_df$variable), ]
 interactions <- importance_df[grepl("_X_", importance_df$variable), ]
 
@@ -243,58 +259,25 @@ if(nrow(interactions) > 0) {
 }
 
 #################################
-# VARIABLE SELECTION RECOMMENDATIONS
-#################################
-
-cat("\nVariable Selection Recommendations:\n")
-
-# Categorize top 20 variables
-top_20_vars <- head(importance_df, 20)$variable
-drought_in_top20 <- sum(grepl("SPEI|drought", top_20_vars, ignore.case = TRUE))
-climate_in_top20 <- sum(grepl("ppt|temp|wind|wetness", top_20_vars, ignore.case = TRUE))
-habitat_in_top20 <- sum(grepl("NLCD|forest|water|eco|alan|msavi|coast", top_20_vars, ignore.case = TRUE))
-interactions_in_top20 <- sum(grepl("_X_", top_20_vars))
-
-cat("In top 20 variables:\n")
-cat("  Drought variables:", drought_in_top20, "\n")
-cat("  Climate variables:", climate_in_top20, "\n") 
-cat("  Habitat variables:", habitat_in_top20, "\n")
-cat("  Interaction terms:", interactions_in_top20, "\n")
-
-# Year effect analysis
-if("year" %in% importance_df$variable) {
-  year_rank <- which(importance_df$variable == "year")
-  year_importance <- importance_df$inc_mse[year_rank]
-  cat("\nTemporal trend analysis:\n")
-  cat("  Year importance ranking:", year_rank, "of", nrow(importance_df), "\n")
-  cat("  Year importance score:", round(year_importance, 3), "\n")
-  
-  if(year_rank <= 10) {
-    cat("  -> Strong temporal trend detected\n")
-  } else if(year_rank <= nrow(importance_df) * 0.3) {
-    cat("  -> Moderate temporal trend\n")
-  } else {
-    cat("  -> Weak temporal trend\n")
-  }
-}
-
-#################################
 # SAVE RESULTS
 #################################
 
 cat("\nSaving results...\n")
 
 # Save model
+
 model_file <- file.path(output_dir, paste0(season, "_rf_model.rds"))
 saveRDS(rf_model, model_file)
 cat("  Model saved:", model_file, "\n")
 
 # Save variable importance
+
 importance_file <- file.path(output_dir, paste0(season, "_variable_importance.csv"))
 write.csv(importance_df, importance_file, row.names = FALSE)
 cat("  Variable importance saved:", importance_file, "\n")
 
 # Save model summary
+
 summary_data <- data.frame(
   metric = c("n_observations", "n_predictors", "ntree", "mtry", "training_time_mins"),
   value = c(nrow(rf_data), ncol(rf_data)-1, ntree, mtry, as.numeric(rf_training_time))
@@ -306,4 +289,4 @@ cat("  Summary saved:", summary_file, "\n")
 
 stopImplicitCluster()
 
-cat("\nRandom Forest analysis complete! Results saved in:", output_dir, "\n")
+cat("Random Forest analysis complete! Results saved in:", output_dir, "\n")
