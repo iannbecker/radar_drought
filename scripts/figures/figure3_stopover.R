@@ -1,13 +1,13 @@
 ##############################
 #
-#   Figure 3: Elevated Radar Platforms with Stopover
+#   Figure 3: Stopover by drought conditions (2018)
 #   Ian Becker
 #   12/18/2025
 #
-#   Creates elevated circular platforms at each radar location
-#   with stopover patterns shown as texture on platform surfaces
-#
 ##############################
+
+# This script is used to make Figure 3 which shows stopover density 
+# by radar during both a wet fall and dry spring during 2018
 
 library(terra)
 library(sf)
@@ -17,7 +17,7 @@ library(dplyr)
 library(ggspatial)
 library(tigris)
 library(viridis)
-library(ggnewscale)  # For multiple fill scales
+library(ggnewscale)  
 
 options(tigris_use_cache = TRUE)
 setwd("/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar")
