@@ -136,14 +136,14 @@ p <- ggplot() +
   geom_sf(data = radar_detection_range, fill = "red", alpha = 0.1, 
           color = "red", linewidth = 0.5) + # Radar detection radii
   geom_sf_text(data = radar_locations, aes(label = site), 
-              size = 2, fontface = "bold") + # Radar labels
+              size = 3, fontface = "bold") + # Radar labels
   scale_fill_viridis_d(option = "turbo", name = "Ecoregion") +
   coord_sf(datum = st_crs(study_area)) +
-  theme_minimal(base_size = 13) +
+  theme_minimal(base_size = 15) +
   theme(
-    legend.position = "right",
-    legend.title = element_text(face = "bold", size = 6),
-    legend.text = element_text(size = 6),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold", size = 15),
+    legend.text = element_text(size = 15),
     panel.grid = element_blank(),
     axis.text = element_text(size = 8),
     axis.title = element_text(size = 10)
@@ -159,3 +159,7 @@ p <- ggplot() +
     keywidth = unit(0.4, "cm")
   ))
 
+# Save figure
+
+output_path <- "figures_tables/figure2_study_area_map.png"
+ggsave(output_path, plot = p, width = 10, height = 8, dpi = 300)
