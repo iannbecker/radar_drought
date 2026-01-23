@@ -78,6 +78,7 @@ for(season in c("spring", "fall")) {
   cat("Found", length(drought_terms), "drought smooth terms\n")
   
   # Create individual plot for each term
+  # Create individual drought smooth plots with minimal axes
   for(term in drought_terms) {
     
     cat("  Plotting:", term, "...\n")
@@ -86,10 +87,10 @@ for(season in c("spring", "fall")) {
       # Extract smooth estimates
       smooth_est <- smooth_estimates(current_model, select = term, n = 200)
       
-      # Get SPEI column name
+      # Get SPEI column
       spei_col <- names(smooth_est)[grepl("SPEI", names(smooth_est))][1]
       
-      # Extract data
+      # Create plot data
       plot_data <- data.frame(
         SPEI = smooth_est[[spei_col]],
         estimate = smooth_est$.estimate,
@@ -111,32 +112,40 @@ for(season in c("spring", "fall")) {
       # Get F-statistic
       f_stat <- current_summary$s.table[term, "F"]
       
-      # Create plot
+      # Get axis ranges for breaks
+      x_range <- range(plot_data$SPEI)
+      y_range <- range(c(plot_data$lower, plot_data$upper))
+      
+      # Create plot with minimal axes
       p <- ggplot(plot_data, aes(x = SPEI, y = estimate)) +
         geom_hline(yintercept = 0, linetype = "dashed", 
-                   color = "gray40", linewidth = 0.5) +
+                   color = "gray40", linewidth = 0.3) +
         geom_ribbon(aes(ymin = lower, ymax = upper), 
                     fill = plot_color, alpha = 0.3) +
-        geom_line(color = plot_color, linewidth = 1.2) +
-        labs(
-          title = paste(toupper(season), "-", category),
-          subtitle = paste("F =", round(f_stat, 0)),
-          x = "SPEI (Drought Index)",
-          y = "Effect on Stopover (log scale)"
+        geom_line(color = plot_color, linewidth = 1.5) +
+        scale_x_continuous(
+          breaks = c(x_range[1], 0, x_range[2]),
+          labels = c(round(x_range[1], 1), "0", round(x_range[2], 1))
         ) +
-        theme_minimal(base_size = 14) +
+        scale_y_continuous(
+          breaks = c(y_range[1], 0, y_range[2]),
+          labels = c(round(y_range[1], 1), "0", round(y_range[2], 1))
+        ) +
+        labs(x = NULL, y = NULL) +
+        theme_minimal(base_size = 20) +  # Large base size
         theme(
-          plot.title = element_text(face = "bold", size = 16),
-          plot.subtitle = element_text(size = 12, color = "gray30"),
           panel.grid.minor = element_blank(),
-          axis.title = element_text(face = "bold"),
-          axis.text = element_text(size = 12)
+          panel.grid.major = element_line(color = "gray90", linewidth = 0.3),
+          axis.text = element_text(size = 18, face = "bold"),  # Large, bold axis text
+          axis.ticks = element_line(linewidth = 0.5),
+          axis.ticks.length = unit(0.15, "cm"),
+          plot.margin = margin(5, 5, 5, 5)
         )
       
       # Save plot
       clean_term <- gsub("[^[:alnum:]]", "_", term)
-      filename <- file.path(output_dir, paste0(season, "_", clean_term, ".png"))
-      ggsave(filename, p, width = 8, height = 6, dpi = 300)
+      filename <- file.path(output_dir, paste0(season, "_", clean_term, "_small.png"))
+      ggsave(filename, p, width = 4, height = 3, dpi = 300)
       
       cat("    ✓ Saved:", basename(filename), "\n")
       
@@ -144,10 +153,7 @@ for(season in c("spring", "fall")) {
       cat("    ✗ Error:", e$message, "\n")
     })
   }
-  
-  cat("\n")
 }
-
 cat("===============================================\n")
 cat("ALL INDIVIDUAL PLOTS COMPLETE!\n")
 cat("===============================================\n")
