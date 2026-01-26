@@ -6,6 +6,8 @@
 #
 ##############################
 
+# This script makes figure 4 in the main text
+
 library(mgcv)
 library(ggplot2)
 library(dplyr)
