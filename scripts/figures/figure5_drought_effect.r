@@ -4,9 +4,12 @@
 #   Ian Becker
 #   December 2025
 #
-#   Generates individual plots for each drought smooth term
 #
 ##############################
+
+# This script is used to create all of the components for Figure 5
+# in the main body of the paper showing effect size of drought between
+# seasons and individual drought effects 
 
 library(mgcv)
 library(gratia)
