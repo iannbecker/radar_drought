@@ -25,14 +25,14 @@ options(tigris_use_cache = TRUE)
 
 # Year for analysis
 
-analysis_year <- 2018
+analysis_year <- 2013
 
 # File paths 
 
 fall_stopover_file <- "raster_data/stopover_fall.tif"
 spring_stopover_file <- "raster_data/stopover_spring.tif"
 fall_spei_file <- "SPEI_fall_1995_2020_250m.tif"  
-spring_spei_file <- "raster_data/cropped_rasters/spring/SPEI_spring_1995_2020_spring_cropped.tif"
+spring_spei_file <- "raster_data/cropped_rasters/spring_raster/SPEI_spring_1995_2020.tif"
 bcr_gdb <- "NABCI_ecoregion.gdb"
 
 # Output settings (can change if there is a designated figure folder)
@@ -168,27 +168,35 @@ create_platform_geometry <- function(center_lon, center_lat, radius_km, elevatio
 extract_platform_stopover <- function(stopover_raster, center_lon, center_lat, 
                                       radius_km, elevation_deg) {
   
-  # Create circular buffer
+  # Calculate radius in degrees
+  radius_deg <- radius_km / 111
   
-  center_sf <- st_sfc(st_point(c(center_lon, center_lat)), crs = 4326)
-  buffer_sf <- st_buffer(center_sf, dist = radius_km * 1000)  # km to m
+  # Create bounding box (wider than circle)
+  bbox <- ext(center_lon - radius_deg * 1.5, 
+              center_lon + radius_deg * 1.5,
+              center_lat - radius_deg * 1.5,
+              center_lat + radius_deg * 1.5)
   
-  # Crop and mask stopover to circle
-  
-  stopover_crop <- crop(stopover_raster, vect(buffer_sf))
-  stopover_masked <- mask(stopover_crop, vect(buffer_sf))
-  
-  # Fill NA with 0 to show complete platform
-  
-  values(stopover_masked)[is.na(values(stopover_masked))] <- 0
+  # Crop to bounding box
+  stopover_crop <- crop(stopover_raster, bbox)
   
   # Convert to dataframe
-  
-  stopover_df <- as.data.frame(stopover_masked, xy = TRUE)
+  stopover_df <- as.data.frame(stopover_crop, xy = TRUE, na.rm = TRUE)
   names(stopover_df)[3] <- "stopover"
   
-  # Elevate to platform height
+  # Calculate distance from center for each pixel
+  stopover_df$dist <- sqrt((stopover_df$x - center_lon)^2 + 
+                             (stopover_df$y - center_lat)^2)
   
+  # Keep only pixels within circular radius
+  stopover_df <- stopover_df %>%
+    filter(dist <= radius_deg) %>%
+    select(-dist)
+  
+  # Fill NA with 0
+  stopover_df$stopover[is.na(stopover_df$stopover)] <- 0
+  
+  # Elevate to platform height
   stopover_df$y <- stopover_df$y + elevation_deg
   stopover_df$station <- paste(center_lon, center_lat, sep="_")
   
@@ -266,7 +274,8 @@ create_panel <- function(stopover_raster, spei_raster, panel_label, season) {
   # Prepare SPEI background
   
   tx_la_buffered <- st_buffer(tx_la, dist = 0.5)
-  spei_masked <- mask(spei_raster, vect(tx_la_buffered))
+  spei_cropped <- crop(spei_raster, vect(tx_la_buffered))
+  spei_masked <- mask(spei_cropped, vect(tx_la_buffered))
   spei_df <- as.data.frame(spei_masked, xy = TRUE, na.rm = TRUE)
   names(spei_df)[3] <- "spei"
   
@@ -310,18 +319,19 @@ create_panel <- function(stopover_raster, spei_raster, panel_label, season) {
     # Layer 6: Stopover raster on platforms (new fill scale)
     
     ggnewscale::new_scale_fill() +
-    geom_raster(data = all_stopover, aes(x = x, y = y, fill = stopover)) +
+    geom_tile(data = all_stopover, aes(x = x, y = y, fill = stopover)) +
     scale_fill_gradientn(
       colors = c("#fde724", "#7ad151", "#22a884", "#2a788e", "#414487", "#440154"),
       name = "Stopover\nDensity",
+      limits = c(0, 60),
       na.value = "transparent"
     ) +
     
     # Layer 7: Platform outlines (solid black circles)
     
-    geom_path(data = all_outlines,
-              aes(x = x, y = y, group = station),
-              color = "black", linewidth = 1.2) +
+    #geom_path(data = all_outlines,
+     #         aes(x = x, y = y, group = station),
+      #        color = "black", linewidth = 1.2) +
     
     # Annotations
     
@@ -385,6 +395,7 @@ p_spring <- create_panel(
   season = "spring"
 )
 
+p_spring
 spring_file <- file.path(output_dir, paste0("panel_b_spring_", analysis_year, ".png"))
 ggsave(spring_file, p_spring, width = plot_width, height = plot_height, dpi = plot_dpi)
 cat("Saved:", spring_file, "\n\n")
