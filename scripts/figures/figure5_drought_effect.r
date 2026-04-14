@@ -70,7 +70,7 @@ fixed_colors <- c(
 
 cat("CREATING INDIVIDUAL DROUGHT SMOOTH PLOTS...\n\n")
 
-for(season in c("spring", "fall")) {
+for(season in c("fall", "spring")) {
   
   cat("Processing", toupper(season), "season...\n")
   
@@ -112,6 +112,11 @@ for(season in c("spring", "fall")) {
         lower = smooth_est$.estimate - 1.96 * smooth_est$.se,
         upper = smooth_est$.estimate + 1.96 * smooth_est$.se
       )
+      
+      # Limit to 95% data range to avoid sparse tail artifacts
+      spei_limits <- quantile(plot_data$SPEI, probs = c(0.025, 0.975))
+      plot_data <- plot_data[plot_data$SPEI >= spei_limits[1] & 
+                               plot_data$SPEI <= spei_limits[2], ]
       
       # Get category and color
       
@@ -189,6 +194,13 @@ cat("CREATING EFFECT SIZE BAR CHART...\n\n")
 calculate_effect_size <- function(model, term, model_summary) {
   tryCatch({
     smooth_est <- smooth_estimates(model, select = term, n = 200)
+    
+    # Trim to 95% range to match plot trimming
+    spei_col <- names(smooth_est)[grepl("SPEI", names(smooth_est))][1]
+    spei_limits <- quantile(smooth_est[[spei_col]], probs = c(0.025, 0.975))
+    smooth_est <- smooth_est[smooth_est[[spei_col]] >= spei_limits[1] & 
+                               smooth_est[[spei_col]] <= spei_limits[2], ]
+    
     estimates <- smooth_est$.estimate
     se <- smooth_est$.se
     
@@ -376,3 +388,5 @@ ggsave(file.path(output_dir, "effect_size_bar_chart.png"), p, width = 8, height 
 cat("===============================================\n")
 cat("BAR CHART SAVED!\n")
 cat("===============================================\n")
+
+k.check(fall_model)
