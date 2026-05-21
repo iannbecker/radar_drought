@@ -58,10 +58,10 @@ categorize_drought <- function(term) {
 # Color scheme
 
 fixed_colors <- c(
-  "Concurrent Season" = "#7b3294",
-  "Immediate Previous Season" = "#e08214",
-  "Previous Migratory Season" = "#1b9e77",
-  "Previous Year (1-year lag)" = "#377eb8"
+  "Concurrent Season"          = "#FF0000",  # red — matches direct arrow
+  "Immediate Previous Season"  = "#FFC000",  # gold — matches indirect arrow
+  "Previous Migratory Season"  = "#7b3294",  # purple
+  "Previous Year (1-year lag)" = "#2c7bb6"   # blue
 )
 
 #################################
@@ -122,6 +122,8 @@ for(season in c("fall", "spring")) {
       
       category <- categorize_drought(term)
       if(is.na(category)) category <- "Other"
+      
+      cat("    DEBUG: term =", term, ", category =", category, "\n")  # ADD THIS
       
       plot_color <- if(category %in% names(fixed_colors)) {
         fixed_colors[[category]]
@@ -346,7 +348,7 @@ p <- ggplot(combined_data, aes(x = x_numeric, y = effect_size)) +
   ) +
   scale_fill_manual(
     name = "Drought Timing",
-    values = c("Concurrent Season" = "#7b3294", "Immediate Previous Season" = "#e08214")
+    values = c("Concurrent Season" = "#FF0000", "Immediate Previous Season" = "#FFC000")
   ) +
   scale_pattern_manual(
     values = c("Fall" = "none", "Spring" = "stripe"),
@@ -367,7 +369,7 @@ p <- ggplot(combined_data, aes(x = x_numeric, y = effect_size)) +
   theme(
     axis.text.x = element_blank(),
     axis.title.y = element_text(face = "bold", size = 11),
-    legend.position = "inside",
+    legend.position = "inside right",
     legend.position.inside = c(0.02, 0.98),
     legend.justification = c(0, 1),
     legend.background = element_blank(),
@@ -390,3 +392,5 @@ cat("BAR CHART SAVED!\n")
 cat("===============================================\n")
 
 k.check(fall_model)
+
+

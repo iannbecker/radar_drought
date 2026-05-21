@@ -37,7 +37,7 @@ print(nlcd_lookup)
 
 # Load model
 
-best_model <- readRDS(file.path(model_dir, "spring_best_model.rds")) # change based on season
+best_model <- readRDS(file.path(model_dir, "fall_best_model.rds")) # change based on season
 
 # Extract NLCD smooth terms
 
@@ -183,11 +183,10 @@ facet_labels <- setNames(
 # Faceted plot
 
 p_facet <- ggplot(nlcd_smooth, aes(x = .data[[spei_col]], y = estimate)) +
-  geom_line(aes(color = nlcd_alpha), linewidth = 1) +
-  geom_ribbon(aes(ymin = estimate - 2*se, 
-                  ymax = estimate + 2*se, 
-                  fill = nlcd_alpha), 
-              alpha = 0.2) +
+  geom_line(linewidth = 1, color = "#FF0000") +
+  geom_ribbon(aes(ymin = estimate - 2*se,
+                  ymax = estimate + 2*se),
+              fill = "gray30", alpha = 0.2) +
   facet_wrap(
     ~ nlcd_alpha,
     scales = "free_y",
