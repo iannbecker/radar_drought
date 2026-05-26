@@ -1,12 +1,12 @@
 ##############################
 #
-#   Drought timeseries - Figure S1
+#   Drought timeseries - Figure 2
 #   Ian Becker
 #   11/20/2025
 #
 ##############################
 
-# This script is used to make figure S1 in the supplemental information
+# This script is used to make Panel C in Figure 2 in the supplemental information
 # which is a drought history of our study area from 1995-2020 based on SPEI data
 
 library(terra)
@@ -19,12 +19,10 @@ library(tigris)
 options(tigris_use_cache = TRUE)
 setwd("PATH HERE")
 
-#################################
-# LOAD AND CLEAN SPEI DATA
-#################################
 
-############### Prep SPEI data
+# LOAD AND CLEAN SPEI DATA ------------------------------------
 
+# Prep SPEI data
 # Note this is starting with filtering the entire dataset - should be saved hereafter
 
 # Load SPEI full dataset
@@ -42,7 +40,7 @@ spei_1995_2020 <- spei[[time_indices]]
 
 writeRaster(spei_1995_2020, "spei_FULL_1995_2020.tif", overwrite=TRUE)
 
-############### Prep study area
+# Prep study area
 
 # Load in raster data
 
@@ -63,9 +61,7 @@ cat("Cropping SPEI to TX/LA study area...\n")
 spei_study <- crop(spei, tx_la)
 spei_study <- mask(spei_study, tx_la)
 
-#################################
-# CATEGORIZE DROUGHT
-#################################
+# CATEGORIZE DROUGHT ------------------------------------
 
 cat("Categorizing drought severity for each month...\n")
 
@@ -73,9 +69,8 @@ cat("Categorizing drought severity for each month...\n")
 
 categorize_drought <- function(spei_values) {
   categories <- case_when(
-    spei_values <= -2.0 ~ "Extremely Dry",
-    spei_values <= -1.5 ~ "Very Dry",
-    spei_values <= -1.0 ~ "Moderately Dry",
+    spei_values <= -2 ~ "Extremely Dry",
+    spei_values <= -1 ~ "Moderately Dry",
     spei_values <= -0.5 ~ "Abnormally Dry",
     TRUE ~ "No Drought"
   )
@@ -96,17 +91,21 @@ for(i in 1:nlyr(spei_study)) {
   if(i %% 50 == 0) cat("  Processing layer", i, "of", nlyr(spei_study), "\n")
   
   # Get SPEI values for this month
+  
   spei_vals <- values(spei_study[[i]])
   spei_vals <- spei_vals[!is.na(spei_vals)]  # Remove NAs
   
   # Categorize
+  
   categories <- categorize_drought(spei_vals)
   
   # Calculate percentages
+  
   total_pixels <- length(spei_vals)
   pct_table <- table(categories) / total_pixels * 100
   
   # Store results
+  
   month_data <- data.frame(
     date = dates[i],
     category = names(pct_table),
@@ -120,9 +119,7 @@ for(i in 1:nlyr(spei_study)) {
 cat("\nDrought categorization complete!\n")
 cat("Total observations:", nrow(drought_history), "\n\n")
 
-#################################
-# PREPARE FOR PLOTTING
-#################################
+# PREP FOR PLOTTING ------------------------------------
 
 cat("Preparing data for plotting...\n")
 
@@ -147,17 +144,14 @@ drought_history$season <- case_when(
   TRUE ~ "Other"
 )
 
-#################################
-# CREATE STACKED AREA PLOT
-#################################
+# CREATE PLOT ------------------------------------
 
 cat("Creating stacked area plot...\n")
 
 # Define colors 
 
-drought_colors <- c(
-  "Extremely Dry" = "#730000",  # Dark red/maroon
-  "Very Dry" = "#E60000",      # Bright red
+drought_colors <- c(  # Dark red/maroon
+  "Extremely Dry" = "#E60000",      # Bright red
   "Moderately Dry" = "#FFA500",       # Orange
   "Abnormally Dry" = "#FFFF00", # Yellow
   "No Drought" = "white"           # White/none
@@ -190,14 +184,14 @@ p <- ggplot(drought_history_plot, aes(x = date, y = percent, fill = category)) +
   theme(
     plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
     axis.title = element_text(face = "bold"),
-    legend.position = "bottom",
-    legend.direction = "horizontal",
+    legend.position = "right",  
+    legend.direction = "vertical",  
     legend.text = element_text(size = 9),
     panel.grid.minor = element_blank(),
     panel.grid.major.x = element_line(color = "gray90", linewidth = 0.3),
     plot.margin = margin(10, 10, 10, 10)
   ) +
-  guides(fill = guide_legend(nrow = 1, reverse = TRUE))
+  guides(fill = guide_legend(nrow = 4, reverse = TRUE))
 
 # Save plot
 
@@ -206,4 +200,3 @@ output_file <- file.path(output_dir, "drought_history_stacked.png")
 ggsave(output_file, p, width = 12, height = 6, dpi = 300)
 cat("\nPlot saved:", output_file, "\n")
 
-cat("All done!\n")
