@@ -6,6 +6,9 @@
 #
 ################################
 
+# This script is used to make Figure 2 in the main text
+# which is a map of the study area showing bird conservation regions (BCR) and radar locations
+
 library(sf)
 library(ggplot2)
 library(ggspatial)
@@ -29,9 +32,7 @@ bcr_lookup <- data.frame(
   stringsAsFactors = FALSE
 )
 
-#################################
-# LOAD DATA
-#################################
+# LOAD DATA ------------------------------------
 
 cat("Downloading state boundaries...\n")
 texas <- states(cb = TRUE) %>% filter(NAME == "Texas")
@@ -82,9 +83,9 @@ if(is.numeric(bcr_shapefile[[bcr_id_col]])) {
 
 bcr_centroids <- st_centroid(bcr_shapefile)
 
-#################################
-# RADAR DATA AND DETECTION CIRCLES
-#################################
+# RADAR LOCATIONS AND DETECTION RADII ------------------------------------
+
+# Texas radars
 
 texas_radars <- data.frame(
   site = c("KGRK", "KHGX", "KCRP", "KDFX", "KFWS", 
@@ -98,12 +99,17 @@ texas_radars <- data.frame(
                 -99.254, -106.698, -101.814, -102.189, -100.492, -101.709, -97.419)
 )
 
+# Louisiana radars
+
 louisiana_radars <- data.frame(
   site = c("KLCH", "KLIX", "KSHV"),
   name = c("Lake Charles", "New Orleans", "Shreveport"),
   latitude = c(30.125, 30.337, 32.451),
   longitude = c(-93.216, -89.826, -93.841)
 )
+
+
+# Combine
 
 all_radars <- rbind(texas_radars, louisiana_radars)
 
@@ -123,20 +129,14 @@ radar_locations <- st_transform(radar_locations, st_crs(study_area))
 
 radar_detection_range <- st_buffer(radar_locations, dist = 80000)   # 80 km in meters
 
-#################################
-# CREATE MAP
-#################################
+# CREATE STUDY AREA MAP ------------------------------------
 
 cat("Creating map...\n")
 
 p <- ggplot() +
   geom_sf(data = study_area, fill = NA, color = "black", linewidth = 0.8) + # state boundaries
   geom_sf(data = bcr_shapefile, aes(fill = bcr_label_name), 
-          color = "white", linewidth = 0.5, alpha = 0.5) + # ecoregions
-  geom_sf(data = radar_detection_range, fill = "red", alpha = 0.1, 
-          color = "red", linewidth = 0.5) + # Radar detection radii
-  geom_sf_text(data = radar_locations, aes(label = site), 
-              size = 3, fontface = "bold") + # Radar labels
+          color = "white", linewidth = 0.5, alpha = 0.5) + # BCRs
   scale_fill_viridis_d(option = "turbo", name = "Ecoregion") +
   coord_sf(datum = st_crs(study_area)) +
   theme_minimal(base_size = 15) +
