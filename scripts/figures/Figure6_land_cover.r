@@ -13,9 +13,7 @@ library(dplyr)
 
 model_dir <- "PATH HERE"
 
-#################################
-# Data prep
-#################################
+# DATA PREP ------------------------------------
 
 # NLCD alpha code table
 
@@ -85,8 +83,10 @@ spei_range <- seq(min(model_data[[spei_var]], na.rm = TRUE),
 
 pred_list <- list()
 
-for(nlcd_level in nlcd_levels) {
+for(nlcd_level in nlcd_levels) { 
+  
   # Create prediction data frame matching model structure
+  
   pred_data <- data.frame(
     spei = spei_range,
     nlcd = factor(nlcd_level, levels = nlcd_levels)
@@ -94,6 +94,7 @@ for(nlcd_level in nlcd_levels) {
   names(pred_data) <- c(spei_var, nlcd_var)
   
   # Add other variables at their median values
+  
   for(var in names(model_data)) {
     if(!var %in% c(spei_var, nlcd_var, "stopover")) {
       if(is.numeric(model_data[[var]])) {
@@ -106,10 +107,12 @@ for(nlcd_level in nlcd_levels) {
   }
   
   # Get predictions with standard errors
+  
   preds <- predict(best_model, newdata = pred_data, se.fit = TRUE, 
                    type = "terms", terms = nlcd_term)
   
   # Store results
+  
   pred_list[[nlcd_level]] <- data.frame(
     spei = spei_range,
     nlcd_code = nlcd_level,
@@ -151,9 +154,7 @@ nlcd_smooth$nlcd_alpha <- factor(nlcd_smooth$alpha_code,
 nlcd_smooth <- nlcd_smooth %>%
   filter(alpha_code != "PI")
 
-#################################
-#  Generate NLCD plots
-################################
+# PUT TOGETHER PLOTS------------------------------------
 
 # Create the plot
 
