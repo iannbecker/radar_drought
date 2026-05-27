@@ -40,35 +40,35 @@ exclude_patterns <- c(
 keep_terms <- !grepl(paste(exclude_patterns, collapse = "|"), smooth_df$term)
 smooth_df <- smooth_df[keep_terms, ]
 
-# Clean up term names for the supplementary table
+# Clean up term names for the plot axes
 
 clean_term_names <- function(term) {
   term <- gsub("s\\(", "", term)
   term <- gsub("ti\\(", "", term)
   term <- gsub("\\)", "", term)
   term <- gsub("_stack", "", term)
-  term <- gsub("_fall_PRISM", "", term)
-  term <- gsub("_PRISM", "", term)
-  term <- gsub("SPEI_1995_2020", "SPEI current season", term)
-  term <- gsub("SPEI_prev_fall_yr", "SPEI previous fall year", term)
-  term <- gsub("SPEI_prev_spring_szn", "SPEI previous spring", term)
-  term <- gsub("SPEI_prev_summer", "SPEI previous summer", term)
+  term <- gsub("SPEI_spring_1995_2020", "SPEI current season", term)
+  term <- gsub("SPEI_prev_fall_szn", "SPEI previous fall", term)
+  term <- gsub("SPEI_prev_spring_yr", "SPEI previous spring year", term)
+  term <- gsub("SPEI_prev_winter", "SPEI previous winter", term)
   term <- gsub(",", " × ", term)
   term <- gsub("alan_dist", "Distance to artificial light", term)
   term <- gsub("dwater_perm", "Distance to permanent water", term)
   term <- gsub("dwater_temp", "Distance to temporary water", term)
   term <- gsub("forest_age", "Forest age", term)
-  term <- gsub("temp_fall", "Temperature", term)
-  term <- gsub("ppt_fall", "Precipitation", term)
-  term <- gsub("wetness_fall", "Soil wetness", term)
-  term <- gsub("fall_uwind", "U-wind", term)
-  term <- gsub("fall_vwind", "V-wind", term)
-  term <- gsub("msavi_fall", "Vegetation greenness", term)
+  term <- gsub("temp_spring_PRISM", "Temperature", term)
+  term <- gsub("ppt_spring_PRISM", "Precipitation", term)
+  term <- gsub("wetness_spring", "Soil wetness", term)
+  term <- gsub("uwind_spring", "U-wind", term)
+  term <- gsub("vwind_spring", "V-wind", term)
+  term <- gsub("NLCD_1995_2020", "NLCD Land Cover", term)
+  term <- gsub("msavi_spring", "Vegetation greenness", term)
+  term <- gsub("radar_id", "Radar", term)
   term <- gsub("dcoast", "Distance to coast", term)
   return(term)
 }
 
-smooth_df$term_full <- clean_term_names(smooth_df$term)
+smooth_df$term_clean <- clean_term_names(smooth_df$term)
 
 # Assign categories
 
@@ -76,13 +76,11 @@ assign_category <- function(term) {
   term_lower <- tolower(term)
   
   # Check if it's an interaction
-  
   if (grepl(" × ", term)) {
     return("Interaction")
   }
   
   # Main effects
-  
   if (grepl("spei", term_lower)) return("Drought")
   if (grepl("temp|ppt|wetness|wind|soil", term_lower)) return("Climate")
   if (grepl("light|coast|water|forest|vegetation|msavi", term_lower)) return("Habitat")
@@ -90,32 +88,24 @@ assign_category <- function(term) {
   return("Other")
 }
 
-smooth_df$category <- sapply(smooth_df$term_full, assign_category)
+smooth_df$category <- sapply(smooth_df$term_clean, assign_category)
 
 # Calculate F-statistics and confidence intervals
 
 smooth_df$F_stat <- smooth_df$F
 
 # Calculate approximate 95% CI 
-
 alpha <- 0.05
 smooth_df$F_lower <- smooth_df$F_stat * qchisq(alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 smooth_df$F_upper <- smooth_df$F_stat * qchisq(1 - alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 
 # Sort by F-statistic (largest to smallest)
-
 smooth_df <- smooth_df %>%
-  arrange(desc(F_stat)) %>%
-  mutate(term_number = row_number())
+  arrange(desc(F_stat))
 
-# Create numbered labels for the plot
-
-smooth_df$term_label <- paste0("Term ", smooth_df$term_number)
-
-# Reorder factor levels for plotting (top to bottom)
-
-smooth_df$term_label <- factor(smooth_df$term_label, 
-                               levels = rev(smooth_df$term_label))
+# Reorder factor levels for plotting (top to bottom, largest F first)
+smooth_df$term_clean <- factor(smooth_df$term_clean, 
+                               levels = rev(smooth_df$term_clean))
 
 cat("\n✓ Data prep complete, time to plot!\n")
 
@@ -134,15 +124,15 @@ category_colors <- c(
 
 # Create the forest plot
 
-p <- ggplot(smooth_df, aes(x = F_stat, y = term_label, color = category)) +
-  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.5) + # Reference line at 0
+p <- ggplot(smooth_df, aes(x = F_stat, y = term_clean, color = category)) +
+  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.5) +
   geom_errorbarh(aes(xmin = F_lower, xmax = F_upper),
-                 height = 0.3, linewidth = 0.7, alpha = 0.7) + # Error bars
-  geom_point(size = 3.5, alpha = 0.9) + # Points
-  scale_color_manual(values = category_colors, name = "Term Type") + # Use color scale 
-  scale_x_continuous(labels = scales::comma) + # Format x-axis labels
+                 height = 0.3, linewidth = 0.7, alpha = 0.7) +
+  geom_point(size = 3.5, alpha = 0.9) +
+  scale_color_manual(values = category_colors, name = "Term Type") +
+  scale_x_continuous(labels = scales::comma) +
   labs(x = "F-statistic", y = NULL) +
-  theme_bw(base_size = 15) +
+  theme_bw(base_size = 12) +
   theme(
     legend.position = "bottom",
     legend.title = element_text(face = "bold", size = 11),
@@ -153,53 +143,16 @@ p <- ggplot(smooth_df, aes(x = F_stat, y = term_label, color = category)) +
     plot.title = element_text(face = "bold", size = 16),
     plot.subtitle = element_text(size = 12, color = "gray30"),
     plot.caption = element_text(size = 9, color = "gray50", hjust = 0),
-    axis.text.y = element_text(size = 10),
+    axis.text.y = element_text(size = 9),  # Adjust size for readability
     axis.text.x = element_text(size = 10)
   )
 
 print(p) 
 
-# Save the plot
+# Save the plot (make it taller to accommodate term names)
 
-ggsave(file.path(model_dir, "spring_forest_plot.png"), plot = p, width = 10, height = 7, dpi = 300, bg = "white")
+ggsave(file.path(model_dir, "spring_forest_plot.png"), 
+       plot = p, width = 10, height = 12, dpi = 300, bg = "white")
 cat("\n✓ Forest plot saved!\n")
 
-################
-#  Supplementary Table
-################
-
-# Create supplementary table with full term names
-
-supp_table <- smooth_df %>%
-  arrange(term_number) %>%
-  select(
-    Term_Number = term_number,
-    Term_Name = term_full,
-    Category = category,
-    F_Statistic = F_stat,
-    EDF = edf,
-    Ref_DF = Ref.df,
-    p_value = `p-value`
-  ) %>%
-  mutate(
-    F_Statistic = round(F_Statistic, 2),
-    EDF = round(EDF, 2),
-    Ref_DF = round(Ref_DF, 2),
-    p_value = ifelse(p_value < 0.001, "< 0.001", format.pval(p_value, digits = 3))
-  )
-
-# Save supplementary table
-
-write.xlsx(supp_table, 
-          file.path(model_dir, "spring_forest_plot_supplementary_table.xlsx"),
-          rowNames = FALSE)
-
-cat("✓ Supplementary table saved!\n")
-
-# Print table
-
-cat("=== SUPPLEMENTARY TABLE ===\n")
-print(supp_table)
-
-
-cat("\n✓ Figure XXXX complete!\n")
+cat("\n✓ Figure 4 complete!\n")
