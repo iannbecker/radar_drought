@@ -6,7 +6,7 @@
 #
 ##############################
 
-# This script makes figure 4 in the main text
+# This script is used to make Figure 4 in the main text
 
 library(mgcv)
 library(ggplot2)
@@ -18,9 +18,7 @@ library(openxlsx)
 model_dir <- "PATH HERE"
 best_model <- readRDS(file.path(model_dir, "spring_best_model.rds"))
 
-################
-#  Data Prep
-################
+# DATA PREP  ------------------------------------
 
 # Extract smooth term statistics
 
@@ -76,11 +74,13 @@ assign_category <- function(term) {
   term_lower <- tolower(term)
   
   # Check if it's an interaction
+  
   if (grepl(" × ", term)) {
     return("Interaction")
   }
   
   # Main effects
+  
   if (grepl("spei", term_lower)) return("Drought")
   if (grepl("temp|ppt|wetness|wind|soil", term_lower)) return("Climate")
   if (grepl("light|coast|water|forest|vegetation|msavi", term_lower)) return("Habitat")
@@ -95,23 +95,22 @@ smooth_df$category <- sapply(smooth_df$term_clean, assign_category)
 smooth_df$F_stat <- smooth_df$F
 
 # Calculate approximate 95% CI 
+
 alpha <- 0.05
 smooth_df$F_lower <- smooth_df$F_stat * qchisq(alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 smooth_df$F_upper <- smooth_df$F_stat * qchisq(1 - alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
 
 # Sort by F-statistic (largest to smallest)
+
 smooth_df <- smooth_df %>%
   arrange(desc(F_stat))
 
 # Reorder factor levels for plotting (top to bottom, largest F first)
+
 smooth_df$term_clean <- factor(smooth_df$term_clean, 
                                levels = rev(smooth_df$term_clean))
 
-cat("\n✓ Data prep complete, time to plot!\n")
-
-################
-#  Plotting
-################
+# PLOTTING ------------------------------------
 
 # Define color scheme
 
@@ -143,16 +142,14 @@ p <- ggplot(smooth_df, aes(x = F_stat, y = term_clean, color = category)) +
     plot.title = element_text(face = "bold", size = 16),
     plot.subtitle = element_text(size = 12, color = "gray30"),
     plot.caption = element_text(size = 9, color = "gray50", hjust = 0),
-    axis.text.y = element_text(size = 9),  # Adjust size for readability
+    axis.text.y = element_text(size = 9),  
     axis.text.x = element_text(size = 10)
   )
 
 print(p) 
 
-# Save the plot (make it taller to accommodate term names)
+# Save plot
 
 ggsave(file.path(model_dir, "spring_forest_plot.png"), 
        plot = p, width = 10, height = 12, dpi = 300, bg = "white")
 cat("\n✓ Forest plot saved!\n")
-
-cat("\n✓ Figure 4 complete!\n")
