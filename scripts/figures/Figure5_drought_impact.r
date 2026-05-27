@@ -20,9 +20,8 @@ library(tidyr)
 
 setwd("PATH TO MODELS HERE")
 
-#################################
-# PREP
-#################################
+# DATA PREP ------------------------------------
+
 
 # Output directory
 
@@ -58,15 +57,14 @@ categorize_drought <- function(term) {
 # Color scheme
 
 fixed_colors <- c(
-  "Concurrent Season"          = "#FF0000",  # red — matches direct arrow
-  "Immediate Previous Season"  = "#FFC000",  # gold — matches indirect arrow
-  "Previous Migratory Season"  = "#7b3294",  # purple
-  "Previous Year (1-year lag)" = "#2c7bb6"   # blue
+  "Concurrent Season"          = "#FF0000",  
+  "Immediate Previous Season"  = "#FFC000",  
+  "Previous Migratory Season"  = "#7b3294", 
+  "Previous Year (1-year lag)" = "#2c7bb6"   
 )
 
-#################################
-# INDIVIDUAL DROUGHT PLOTS
-#################################
+# INDIVIDUAL DROUGHT PLOTS ------------------------------------
+
 
 cat("CREATING INDIVIDUAL DROUGHT SMOOTH PLOTS...\n\n")
 
@@ -123,7 +121,7 @@ for(season in c("fall", "spring")) {
       category <- categorize_drought(term)
       if(is.na(category)) category <- "Other"
       
-      cat("    DEBUG: term =", term, ", category =", category, "\n")  # ADD THIS
+      cat("    DEBUG: term =", term, ", category =", category, "\n") 
       
       plot_color <- if(category %in% names(fixed_colors)) {
         fixed_colors[[category]]
@@ -185,9 +183,7 @@ cat("===============================================\n")
 cat("ALL INDIVIDUAL PLOTS COMPLETE!\n")
 cat("===============================================\n")
 
-#################################
-# BAR CHART - EFFECT SIZES
-#################################
+# EFFECT SIZE BAR CHART ------------------------------------
 
 cat("CREATING EFFECT SIZE BAR CHART...\n\n")
 
@@ -198,6 +194,7 @@ calculate_effect_size <- function(model, term, model_summary) {
     smooth_est <- smooth_estimates(model, select = term, n = 200)
     
     # Trim to 95% range to match plot trimming
+    
     spei_col <- names(smooth_est)[grepl("SPEI", names(smooth_est))][1]
     spei_limits <- quantile(smooth_est[[spei_col]], probs = c(0.025, 0.975))
     smooth_est <- smooth_est[smooth_est[[spei_col]] >= spei_limits[1] & 
@@ -390,7 +387,5 @@ ggsave(file.path(output_dir, "effect_size_bar_chart.png"), p, width = 8, height 
 cat("===============================================\n")
 cat("BAR CHART SAVED!\n")
 cat("===============================================\n")
-
-k.check(fall_model)
 
 
