@@ -19,7 +19,9 @@ library(ggnewscale)
 
 options(tigris_use_cache = TRUE)
 
-# DATA PREP ------------------------------------
+#################################
+# DATA PREP
+#################################
 
 # Year for analysis
 
@@ -50,7 +52,9 @@ plot_width <- 8
 plot_height <- 7
 plot_dpi <- 600
 
-# LOAD DATA  ------------------------------------
+#################################
+# DATA LOAD
+#################################
 
 cat("Loading spatial data...\n")
 
@@ -79,7 +83,9 @@ bcr_clipped <- st_intersection(bcr_crop, tx_la)
 
 cat("Data loaded\n\n")
 
-# RADAR LOCATIONS ------------------------------------
+#################################
+# RADAR STATION LOCATIONS
+#################################
 
 # Texas radars (n=12)
 
@@ -110,7 +116,9 @@ cat("Radar stations:", nrow(radar_stations), "\n")
 cat("  Texas:", nrow(texas_radars), "\n")
 cat("  Louisiana:", nrow(louisiana_radars), "\n\n")
 
-# HELPER FUNCTION TO CREATE RADAR PLATFORMS  ------------------------------------
+#################################
+# FUNCTION: CREATE PLATFORM GEOMETRY
+#################################
 
 create_platform_geometry <- function(center_lon, center_lat, radius_km, elevation_deg) {
   
@@ -153,55 +161,51 @@ create_platform_geometry <- function(center_lon, center_lat, radius_km, elevatio
   return(list(shadow = shadow, support = support_line, outline = outline))
 }
 
-# HELPER FUNCTION TO EXTRACT STOPOVER DATA ------------------------------------
+#################################
+# FUNCTION: EXTRACT STOPOVER RASTER
+#################################
 
 extract_platform_stopover <- function(stopover_raster, center_lon, center_lat, 
                                       radius_km, elevation_deg) {
   
   # Calculate radius in degrees
-  
   radius_deg <- radius_km / 111
   
   # Create bounding box (wider than circle)
-  
   bbox <- ext(center_lon - radius_deg * 1.5, 
               center_lon + radius_deg * 1.5,
               center_lat - radius_deg * 1.5,
               center_lat + radius_deg * 1.5)
   
   # Crop to bounding box
-  
   stopover_crop <- crop(stopover_raster, bbox)
   
   # Convert to dataframe
-  
   stopover_df <- as.data.frame(stopover_crop, xy = TRUE, na.rm = TRUE)
   names(stopover_df)[3] <- "stopover"
   
   # Calculate distance from center for each pixel
-  
   stopover_df$dist <- sqrt((stopover_df$x - center_lon)^2 + 
                              (stopover_df$y - center_lat)^2)
   
   # Keep only pixels within circular radius
-  
   stopover_df <- stopover_df %>%
     filter(dist <= radius_deg) %>%
     select(-dist)
   
   # Fill NA with 0
-  
   stopover_df$stopover[is.na(stopover_df$stopover)] <- 0
   
   # Elevate to platform height
-  
   stopover_df$y <- stopover_df$y + elevation_deg
   stopover_df$station <- paste(center_lon, center_lat, sep="_")
   
   return(stopover_df)
 }
 
-# HELPER FUNCTION TO EXTRACT DATA FOR YEAR ------------------------------------
+#################################
+# FUNCTION: EXTRACT YEAR DATA
+#################################
 
 extract_year_data <- function(stopover_stack, spei_stack, year, season) {
   
@@ -227,7 +231,9 @@ extract_year_data <- function(stopover_stack, spei_stack, year, season) {
   return(list(stopover = stopover_layer, spei = spei_layer))
 }
 
-# HELPER FUNCTION TO CREATE PLOT PANEL ------------------------------------
+#################################
+# FUNCTION: CREATE PANEL PLOT
+#################################
 
 create_panel <- function(stopover_raster, spei_raster, panel_label, season) {
   
@@ -321,6 +327,12 @@ create_panel <- function(stopover_raster, spei_raster, panel_label, season) {
       na.value = "transparent"
     ) +
     
+    # Layer 7: Platform outlines (solid black circles)
+    
+    #geom_path(data = all_outlines,
+     #         aes(x = x, y = y, group = station),
+      #        color = "black", linewidth = 1.2) +
+    
     # Annotations
     
     annotation_north_arrow(
@@ -353,9 +365,13 @@ create_panel <- function(stopover_raster, spei_raster, panel_label, season) {
   return(p)
 }
 
-# GENERATE PLOTS ------------------------------------
+#################################
+# GENERATE PLOTS
+#################################
 
-# Panel (a): Fall 
+# Panel (a): Fall 2018 (Wet conditions)
+
+cat("Panel (a): Fall", analysis_year, "\n")
 fall_data <- extract_year_data(fall_stopover, fall_spei, analysis_year, "fall")
 p_fall <- create_panel(
   stopover_raster = fall_data$stopover,
@@ -366,9 +382,11 @@ p_fall <- create_panel(
 
 fall_file <- file.path(output_dir, paste0("panel_a_fall_", analysis_year, ".png"))
 ggsave(fall_file, p_fall, width = plot_width, height = plot_height, dpi = plot_dpi)
+cat("  ✓ Saved:", fall_file, "\n\n")
 
-# Panel (b): Spring
+# Panel (b): Spring 2018 (Drought conditions)
 
+cat("Panel (b): Spring", analysis_year, "\n")
 spring_data <- extract_year_data(spring_stopover, spring_spei, analysis_year, "spring")
 p_spring <- create_panel(
   stopover_raster = spring_data$stopover,
@@ -377,5 +395,9 @@ p_spring <- create_panel(
   season = "spring"
 )
 
+p_spring
 spring_file <- file.path(output_dir, paste0("panel_b_spring_", analysis_year, ".png"))
 ggsave(spring_file, p_spring, width = plot_width, height = plot_height, dpi = plot_dpi)
+cat("Saved:", spring_file, "\n\n")
+
+cat("FIGURE 3 COMPLETE!\n")
