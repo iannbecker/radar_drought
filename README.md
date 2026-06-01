@@ -21,7 +21,7 @@ These scripts are for figures in the main body of the manuscript as well as the 
 | `Figure3_drought_history.r` | Creates Panel C in Figure 3; drought history across our study area through our study period (1995-2020) |
 | `Figure4_best_model.r` | Forest plots showing F-statistics of predictors in selected model for each season |
 | `Figure5_drought_impact.r` | Makes all parts of Figure 5: bar graph comparing effect size of drought between fall and spring, smooth curves for each drought window |
-| `Figure6_Land_Cover.r` | Faceted figure showing relationship between SPEI and stopover for each land cover class |
+| `Figure6_land_cover.r` | Faceted figure showing relationship between SPEI and stopover for each land cover class |
 | `supp_smooth_curves.r` | Used to plot any specified smooth curve for any predictor |
 
 ## Abstract
