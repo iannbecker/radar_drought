@@ -1,6 +1,6 @@
 ##############################
 #
-#   Random Forest - Spatially Subsampled
+#   Random Forest 
 #   Ian Becker
 #   May 2026
 #
