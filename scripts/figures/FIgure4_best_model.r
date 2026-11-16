@@ -1,136 +1,111 @@
 ##############################
 #
-#   Figure 4 - Forest Plots
+#   Figure 4 - Effect Size Plots
 #   Ian Becker
-#   November 2025
+#   November 2026
 #
 ##############################
 
-# This script is used to make Figure 4 in the main text
+# Plots each smooth term's effect size (range of its partial effect on the
+# log scale, i.e. peak-to-trough) from the {season}_best_model_terms.csv
+# tables written by results_pipeline.R. Interaction ranges there are already
+# restricted to data-supported bins.
 
-library(mgcv)
 library(ggplot2)
 library(dplyr)
-library(openxlsx)
 
-# Set working directory and load model
+# Settings ------------------------------------
 
-model_dir <- "PATH HERE"
-best_model <- readRDS(file.path(model_dir, "spring_best_model.rds"))
+results_dir <- "/Users/ianbecker/Desktop/project_code/radar_drought/data/final_analysis/results_outputs"      # folder holding {season}_best_model_terms.csv
+season      <- "fall"         # "fall" or "spring"
+plot_height <- 14               # inches; increase for more space between labels
+
+# Terms included as controls, not plotted
+exclude_terms <- c("s(year)", "s(dist_radar_800m)")
 
 # DATA PREP  ------------------------------------
 
-# Extract smooth term statistics
+terms <- read.csv(file.path(results_dir, paste0(season, "_best_model_terms.csv")))
 
-smooth_summary <- summary(best_model)$s.table
-smooth_df <- as.data.frame(smooth_summary)
-smooth_df$term <- rownames(smooth_df)
+terms <- terms %>%
+  filter(!term %in% exclude_terms, !is.na(effect_range))
 
-# Filter out terms we don't want
+# Readable labels for every variable name in either season's model
 
-exclude_patterns <- c(
-  ":ecoregion", 
-  ":NLCD", 
-  "^s\\(ecoregion\\)",
-  "^s\\(year\\)"
+var_labels <- c(
+  SPEI_fall_current         = "SPEI current fall",
+  SPEI_spring_prev_year     = "SPEI previous spring",
+  temp_fall_PRISM_stack     = "Temperature",
+  temp_spring_PRISM_stack   = "Temperature",
+  ppt_fall_PRISM_stack      = "Precipitation",
+  ppt_spring_PRISM_stack    = "Precipitation",
+  fall_uwind                = "U-wind",
+  uwind_spring              = "U-wind",
+  fall_vwind                = "V-wind",
+  vwind_spring              = "V-wind",
+  msavi_fall                = "Vegetation greenness",
+  msavi_spring              = "Vegetation greenness",
+  alan_dist_stack           = "Distance to artificial light",
+  dwater_perm_stack         = "Distance to permanent water",
+  dwater_temp_stack         = "Distance to temporary water",
+  dcoast                    = "Distance to coast",
+  landscape_pct_wetland     = "% Wetland",
+  landscape_pct_agriculture = "% Agriculture",
+  landscape_pct_developed   = "% Developed",
+  landscape_pct_grassland   = "% Grassland",
+  landscape_pct_shrub_scrub = "% Shrub/scrub",
+  landscape_pct_forest      = "% Forest"
 )
 
-keep_terms <- !grepl(paste(exclude_patterns, collapse = "|"), smooth_df$term)
-smooth_df <- smooth_df[keep_terms, ]
+climate_vars <- c("temp_fall_PRISM_stack", "temp_spring_PRISM_stack",
+                  "ppt_fall_PRISM_stack", "ppt_spring_PRISM_stack",
+                  "fall_uwind", "uwind_spring", "fall_vwind", "vwind_spring")
 
-# Clean up term names for the plot axes
-
-clean_term_names <- function(term) {
-  term <- gsub("s\\(", "", term)
-  term <- gsub("ti\\(", "", term)
-  term <- gsub("\\)", "", term)
-  term <- gsub("_stack", "", term)
-  term <- gsub("SPEI_spring_1995_2020", "SPEI current season", term)
-  term <- gsub("SPEI_prev_fall_szn", "SPEI previous fall", term)
-  term <- gsub("SPEI_prev_spring_yr", "SPEI previous spring year", term)
-  term <- gsub("SPEI_prev_winter", "SPEI previous winter", term)
-  term <- gsub(",", " × ", term)
-  term <- gsub("alan_dist", "Distance to artificial light", term)
-  term <- gsub("dwater_perm", "Distance to permanent water", term)
-  term <- gsub("dwater_temp", "Distance to temporary water", term)
-  term <- gsub("forest_age", "Forest age", term)
-  term <- gsub("temp_spring_PRISM", "Temperature", term)
-  term <- gsub("ppt_spring_PRISM", "Precipitation", term)
-  term <- gsub("wetness_spring", "Soil wetness", term)
-  term <- gsub("uwind_spring", "U-wind", term)
-  term <- gsub("vwind_spring", "V-wind", term)
-  term <- gsub("NLCD_1995_2020", "NLCD Land Cover", term)
-  term <- gsub("msavi_spring", "Vegetation greenness", term)
-  term <- gsub("radar_id", "Radar", term)
-  term <- gsub("dcoast", "Distance to coast", term)
-  return(term)
+# Split "s(x)" / "ti(x,y)" into variable names
+term_vars <- function(term) {
+  strsplit(gsub("^(s|ti)\\(|\\)$", "", term), ",")[[1]]
 }
 
-smooth_df$term_clean <- clean_term_names(smooth_df$term)
+terms$vars <- lapply(terms$term, term_vars)
 
-# Assign categories
+terms$term_clean <- sapply(terms$vars, function(v) {
+  lab <- var_labels[v]
+  if (any(is.na(lab))) stop("No label for: ", paste(v[is.na(lab)], collapse = ", "))
+  paste(lab, collapse = " × ")
+})
 
-assign_category <- function(term) {
-  term_lower <- tolower(term)
-  
-  # Check if it's an interaction
-  
-  if (grepl(" × ", term)) {
-    return("Interaction")
-  }
-  
-  # Main effects
-  
-  if (grepl("spei", term_lower)) return("Drought")
-  if (grepl("temp|ppt|wetness|wind|soil", term_lower)) return("Climate")
-  if (grepl("light|coast|water|forest|vegetation|msavi", term_lower)) return("Habitat")
-  
-  return("Other")
-}
 
-smooth_df$category <- sapply(smooth_df$term_clean, assign_category)
+terms$category <- sapply(terms$vars, function(v) {
+  if (length(v) > 1)          return("Interaction")
+  if (grepl("^SPEI", v))      return("Drought")
+  if (v %in% climate_vars)    return("Climate")
+  "Habitat"
+})
 
-# Calculate F-statistics and confidence intervals
+# Order largest effect at top
 
-smooth_df$F_stat <- smooth_df$F
-
-# Calculate approximate 95% CI 
-
-alpha <- 0.05
-smooth_df$F_lower <- smooth_df$F_stat * qchisq(alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
-smooth_df$F_upper <- smooth_df$F_stat * qchisq(1 - alpha/2, df = smooth_df$Ref.df) / smooth_df$Ref.df
-
-# Sort by F-statistic (largest to smallest)
-
-smooth_df <- smooth_df %>%
-  arrange(desc(F_stat))
-
-# Reorder factor levels for plotting (top to bottom, largest F first)
-
-smooth_df$term_clean <- factor(smooth_df$term_clean, 
-                               levels = rev(smooth_df$term_clean))
+terms <- terms %>% arrange(desc(effect_range))
+terms$term_clean <- factor(terms$term_clean, levels = rev(terms$term_clean))
 
 # PLOTTING ------------------------------------
 
-# Define color scheme
-
 category_colors <- c(
-  "Drought" = "#c94c4c",
-  "Climate" = "#4c7ac9", 
-  "Habitat" = "#52a354",
+  "Drought"     = "#c94c4c",
+  "Climate"     = "#4c7ac9",
+  "Habitat"     = "#52a354",
   "Interaction" = "#9370DB"
 )
 
-# Create the forest plot
-
-p <- ggplot(smooth_df, aes(x = F_stat, y = term_clean, color = category)) +
-  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.5) +
-  geom_errorbarh(aes(xmin = F_lower, xmax = F_upper),
-                 height = 0.3, linewidth = 0.7, alpha = 0.7) +
+p <- ggplot(terms, aes(x = effect_range, y = term_clean, color = category)) +
+  geom_segment(aes(x = 0, xend = effect_range, yend = term_clean),
+               linewidth = 0.7, alpha = 0.6) +
   geom_point(size = 3.5, alpha = 0.9) +
   scale_color_manual(values = category_colors, name = "Term Type") +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "F-statistic", y = NULL) +
+  scale_x_continuous(
+    name = "Effect size (range of partial effect, log scale)",
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(y = NULL) +
   theme_bw(base_size = 12) +
   theme(
     legend.position = "bottom",
@@ -139,17 +114,14 @@ p <- ggplot(smooth_df, aes(x = F_stat, y = term_clean, color = category)) +
     panel.grid.major.y = element_blank(),
     panel.grid.minor = element_blank(),
     panel.grid.major.x = element_line(color = "gray90"),
-    plot.title = element_text(face = "bold", size = 16),
-    plot.subtitle = element_text(size = 12, color = "gray30"),
-    plot.caption = element_text(size = 9, color = "gray50", hjust = 0),
-    axis.text.y = element_text(size = 9),  
+    axis.text.y = element_text(size = 9),
     axis.text.x = element_text(size = 10)
   )
 
-print(p) 
+print(p)
 
-# Save plot
+# Save plot (label spacing is set by the height)
 
-ggsave(file.path(model_dir, "spring_forest_plot.png"), 
-       plot = p, width = 10, height = 12, dpi = 300, bg = "white")
-cat("\n✓ Forest plot saved!\n")
+ggsave(file.path(results_dir, paste0(season, "_effect_size_plot.png")),
+       plot = p, width = 10, height = plot_height, dpi = 300, bg = "white")
+cat("\n✓ Effect size plot saved!\n")

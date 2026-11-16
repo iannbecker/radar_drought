@@ -18,70 +18,12 @@ library(viridis)
 
 options(tigris_use_cache = TRUE)
 
-# BCR lookup table
-
-bcr_lookup <- data.frame(
-  code = c(1, 2, 4, 5, 6, 7, 9, 12, 14, 15),
-  name = c(
-    "Central Mixed Grass Prairie", "Chihuahuan Desert",
-    "Edwards Plateau", "Gulf Coastal Prairie",
-    "Mississippi Alluvial Valley", "Oaks And Prairies",
-    "Shortgrass Prairie", "Southeastern Coastal Plain",
-    "Tamaulipan Brushlands", "West Gulf Coastal Plain/Ouachitas"
-  ),
-  stringsAsFactors = FALSE
-)
-
 # LOAD DATA ------------------------------------
 
 cat("Downloading state boundaries...\n")
 texas <- states(cb = TRUE) %>% filter(NAME == "Texas")
 louisiana <- states(cb = TRUE) %>% filter(NAME == "Louisiana")
 study_area <- bind_rows(texas, louisiana)
-
-# Load BCR shapefile
-
-gdb_path <- "/Users/ianbecker/Library/CloudStorage/OneDrive-TheUniversityofTexas-RioGrandeValley/DroughtRadar/NABCI_ecoregion.gdb"
-bcr_shapefile <- st_read(gdb_path, layer = "BCR_Terrestrial_Master")
-
-# Transform to same CRS
-
-bcr_shapefile <- st_transform(bcr_shapefile, st_crs(study_area))
-
-# Crop BCRs to study area
-
-cat("Cropping BCRs to Texas and Louisiana...\n")
-sf_use_s2(FALSE)
-bcr_shapefile <- st_make_valid(bcr_shapefile)
-study_area <- st_make_valid(study_area)
-bcr_shapefile <- st_intersection(bcr_shapefile, st_union(study_area))
-sf_use_s2(TRUE)
-
-# Find BCR column name and join with lookup table
-
-bcr_id_col <- NULL
-for(col in c("bcr", "BCR", "bcr_code", "BCR_CODE", "bcr_label_name", "BCR_LABEL_NAME")) {
-  if(col %in% names(bcr_shapefile)) {
-    bcr_id_col <- col
-    break
-  }
-}
-
-cat("Using BCR column:", bcr_id_col, "\n")
-
-# Join with lookup table to get clean names
-
-if(is.numeric(bcr_shapefile[[bcr_id_col]])) {
-  bcr_shapefile <- bcr_shapefile %>%
-    left_join(bcr_lookup, by = setNames("code", bcr_id_col))
-} else {
-  bcr_shapefile <- bcr_shapefile %>%
-    left_join(bcr_lookup, by = setNames("name", bcr_id_col))
-}
-
-# Calculate centroids for labels
-
-bcr_centroids <- st_centroid(bcr_shapefile)
 
 # RADAR LOCATIONS AND DETECTION RADII ------------------------------------
 
@@ -134,30 +76,32 @@ radar_detection_range <- st_buffer(radar_locations, dist = 80000)   # 80 km in m
 cat("Creating map...\n")
 
 p <- ggplot() +
-  geom_sf(data = study_area, fill = NA, color = "black", linewidth = 0.8) + # state boundaries
-  geom_sf(data = bcr_shapefile, aes(fill = bcr_label_name), 
-          color = "white", linewidth = 0.5, alpha = 0.5) + # BCRs
-  scale_fill_viridis_d(option = "turbo", name = "Ecoregion") +
+  geom_sf(data = study_area, fill = NA, color = "black", linewidth = 0.8) + 
+  geom_sf(data = radar_detection_range, fill = "red", alpha = 0.2,
+          color = "red", linewidth = 0.6) + # 80 km detection radii
+  geom_sf_text(data = radar_locations, aes(label = site),
+               size = 3, fontface = "bold", color = "black") + # radar abbreviations
   coord_sf(datum = st_crs(study_area)) +
   theme_minimal(base_size = 15) +
   theme(
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold", size = 15),
-    legend.text = element_text(size = 15),
     panel.grid = element_blank(),
     axis.text = element_text(size = 8),
     axis.title = element_text(size = 10)
   ) +
   annotation_scale(location = "tr", width_hint = 0.3) +
+  annotation_north_arrow(
+    location = "tl",
+    which_north = "true",
+    pad_x = unit(0.3, "cm"),
+    pad_y = unit(0.3, "cm"),
+    style = north_arrow_fancy_orienteering()
+  ) +
   labs(
     x = "Longitude",
     y = "Latitude"
-  ) +
-  guides(fill = guide_legend(
-    nrow = 5, 
-    keyheight = unit(0.4, "cm"),
-    keywidth = unit(0.4, "cm")
-  ))
+  )
+
+p
 
 # Save figure
 
