@@ -1,391 +1,96 @@
-##############################
+#################################
 #
-#   Figure 5 - Individual Drought Effects
+#   Figure 5 - SPEI Main Effect, Fall and Spring
 #   Ian Becker
-#   December 2025
+#   November 2026
 #
-#
-##############################
+################################
 
-# This script is used to create all of the components for Figure 5
-# in the main body of the paper showing effect size of drought between
-# seasons and individual drought effects 
+# Partial effect of the winning SPEI window for each season,
+# trimmed to the 5th-95th percentile of observed SPEI, on a shared y-axis
 
 library(mgcv)
 library(gratia)
 library(ggplot2)
-library(ggpattern)
 library(dplyr)
-library(tidyr)
 
-setwd("PATH TO MODELS HERE")
+output_dir <- "figures_tables"
+dir.create(output_dir, showWarnings = FALSE)
 
-# DATA PREP ------------------------------------
+# EXTRACT SMOOTHS ------------------------------------
 
-
-# Output directory
-
-output_dir <- "individual_drought_plots"
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-
-# Load in models 
-
-cat("Loading models...\n")
-fall_model <- readRDS("fall_best_model.rds")
-spring_model <- readRDS("spring_best_model.rds")
-
-fall_summary <- summary(fall_model)
-spring_summary <- summary(spring_model)
-cat("Models loaded successfully\n\n")
-
-# Create function to categorize drought terms
-
-categorize_drought <- function(term) {
-  if(grepl("1995.*2020|1995.*2024|1995.*2025|spring_1995", term)) {
-    return("Concurrent Season")
-  } else if(grepl("prev.*summer|prev_summer|prev.*winter|prev_winter", term)) {
-    return("Immediate Previous Season")
-  } else if(grepl("prev.*spring.*szn|prev_spring_szn|prev.*fall.*szn|prev_fall_szn", term)) {
-    return("Previous Migratory Season")
-  } else if(grepl("prev.*yr|prev.*year|prev_fall_yr|prev_spring_yr", term)) {
-    return("Previous Year (1-year lag)")
-  } else {
-    return(NA)
-  }
+get_spei <- function(mod, term, var) {
+  sm <- smooth_estimates(mod, select = term, n = 200) %>% add_confint()
+  q  <- quantile(mod$model[[var]], c(0.05, 0.95))
+  sm <- sm[sm[[var]] >= q[1] & sm[[var]] <= q[2], ]
+  sm$spei <- sm[[var]]
+  sm
 }
 
-# Color scheme
+# Fall: current-season window
+fall_mod <- readRDS("fall_BEST_FINAL_full_interaction.rds")
+fall_sm  <- get_spei(fall_mod, "s(SPEI_fall_current)", "SPEI_fall_current")
+rm(fall_mod); gc()
 
-fixed_colors <- c(
-  "Concurrent Season"          = "#FF0000",  
-  "Immediate Previous Season"  = "#FFC000",  
-  "Previous Migratory Season"  = "#7b3294", 
-  "Previous Year (1-year lag)" = "#2c7bb6"   
-)
+# Spring: previous-year same-season window
+spring_mod <- readRDS("spring_BEST_FINAL_full_interaction.rds")
+spring_sm  <- get_spei(spring_mod, "s(SPEI_spring_prev_year)", "SPEI_spring_prev_year")
+rm(spring_mod); gc()
 
-# INDIVIDUAL DROUGHT PLOTS ------------------------------------
+# If SPEI was scaled before modeling, back-transform here with saved scaling info:
+# fall_sm$spei   <- fall_sm$spei   * fall_sd   + fall_mean
+# spring_sm$spei <- spring_sm$spei * spring_sd + spring_mean
 
+# SHARED Y-AXIS ------------------------------------
 
-cat("CREATING INDIVIDUAL DROUGHT SMOOTH PLOTS...\n\n")
+y_lim <- range(c(fall_sm$.lower_ci, fall_sm$.upper_ci,
+                 spring_sm$.lower_ci, spring_sm$.upper_ci))
 
-for(season in c("fall", "spring")) {
-  
-  cat("Processing", toupper(season), "season...\n")
-  
-  # Select appropriate model and summary
-  
-  current_model <- if(season == "fall") fall_model else spring_model
-  current_summary <- if(season == "fall") fall_summary else spring_summary
-  
-  # Get drought terms
-  
-  all_terms <- rownames(current_summary$s.table)
-  drought_terms <- all_terms[grepl("SPEI", all_terms) & 
-                               !grepl("ti\\(|te\\(|,", all_terms)]
-  
-  cat("Found", length(drought_terms), "drought smooth terms\n")
-  
-  # Create individual plot for each drought window
-  
-  for(term in drought_terms) {
-    
-    cat("  Plotting:", term, "...\n")
-    
-    tryCatch({
-      
-      # Extract smooth estimates
-      
-      smooth_est <- smooth_estimates(current_model, select = term, n = 200)
-      
-      # Get SPEI column
-      
-      spei_col <- names(smooth_est)[grepl("SPEI", names(smooth_est))][1]
-      
-      # Create plot data
-      
-      plot_data <- data.frame(
-        SPEI = smooth_est[[spei_col]],
-        estimate = smooth_est$.estimate,
-        se = smooth_est$.se,
-        lower = smooth_est$.estimate - 1.96 * smooth_est$.se,
-        upper = smooth_est$.estimate + 1.96 * smooth_est$.se
-      )
-      
-      # Limit to 95% data range to avoid sparse tail artifacts
-      spei_limits <- quantile(plot_data$SPEI, probs = c(0.025, 0.975))
-      plot_data <- plot_data[plot_data$SPEI >= spei_limits[1] & 
-                               plot_data$SPEI <= spei_limits[2], ]
-      
-      # Get category and color
-      
-      category <- categorize_drought(term)
-      if(is.na(category)) category <- "Other"
-      
-      cat("    DEBUG: term =", term, ", category =", category, "\n") 
-      
-      plot_color <- if(category %in% names(fixed_colors)) {
-        fixed_colors[[category]]
-      } else {
-        "gray50"
-      }
-      
-      # Get F-statistic
-      
-      f_stat <- current_summary$s.table[term, "F"]
-      
-      # Get axis ranges for breaks
-      
-      x_range <- range(plot_data$SPEI)
-      y_range <- range(c(plot_data$lower, plot_data$upper))
-      
-      # Create plot with minimal axes
-      
-      p <- ggplot(plot_data, aes(x = SPEI, y = estimate)) +
-        geom_hline(yintercept = 0, linetype = "dashed", 
-                   color = "gray40", linewidth = 0.3) +
-        geom_ribbon(aes(ymin = lower, ymax = upper), 
-                    fill = plot_color, alpha = 0.3) +
-        geom_line(color = plot_color, linewidth = 1.5) +
-        scale_x_continuous(
-          breaks = c(x_range[1], 0, x_range[2]),
-          labels = c(round(x_range[1], 1), "0", round(x_range[2], 1))
-        ) +
-        scale_y_continuous(
-          breaks = c(y_range[1], 0, y_range[2]),
-          labels = c(round(y_range[1], 1), "0", round(y_range[2], 1))
-        ) +
-        labs(x = NULL, y = NULL) +
-        theme_minimal(base_size = 20) +  
-        theme(
-          panel.grid.minor = element_blank(),
-          panel.grid.major = element_line(color = "gray90", linewidth = 0.3),
-          axis.text = element_text(size = 18, face = "bold"),  
-          axis.ticks = element_line(linewidth = 0.5),
-          axis.ticks.length = unit(0.15, "cm"),
-          plot.margin = margin(5, 5, 5, 5)
-        )
-      
-      # Save plot
-      
-      clean_term <- gsub("[^[:alnum:]]", "_", term)
-      filename <- file.path(output_dir, paste0(season, "_", clean_term, "_small.png"))
-      ggsave(filename, p, width = 4, height = 3, dpi = 300)
-      
-      cat("    ✓ Saved:", basename(filename), "\n")
-      
-    }, error = function(e) {
-      cat("    ✗ Error:", e$message, "\n")
-    })
-  }
+# PLOT FUNCTION ------------------------------------
+
+plot_spei <- function(sm, x_lab) {
+  ggplot(sm, aes(x = spei, y = .estimate)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+    geom_ribbon(aes(ymin = .lower_ci, ymax = .upper_ci), fill = "#D55E00", alpha = 0.5) +
+    geom_line(linewidth = 1, color = "#D55E00") +
+    coord_cartesian(ylim = y_lim) +
+    labs(x = x_lab, y = "Partial effect (log scale)") +
+    theme_classic(base_size = 15)
 }
 
-cat("===============================================\n")
-cat("ALL INDIVIDUAL PLOTS COMPLETE!\n")
-cat("===============================================\n")
+p_fall   <- plot_spei(fall_sm,   "SPEI (current season)")
+p_spring <- plot_spei(spring_sm, "SPEI (previous year, same season)")
 
-# EFFECT SIZE BAR CHART ------------------------------------
+# SAVE ------------------------------------
 
-cat("CREATING EFFECT SIZE BAR CHART...\n\n")
+ggsave(file.path(output_dir, "figure5a_spei_fall.png"),   p_fall,   width = 6, height = 5, dpi = 300)
+ggsave(file.path(output_dir, "figure5b_spei_spring.png"), p_spring, width = 6, height = 5, dpi = 300)
 
-# Calculate effect size function
 
-calculate_effect_size <- function(model, term, model_summary) {
-  tryCatch({
-    smooth_est <- smooth_estimates(model, select = term, n = 200)
-    
-    # Trim to 95% range to match plot trimming
-    
-    spei_col <- names(smooth_est)[grepl("SPEI", names(smooth_est))][1]
-    spei_limits <- quantile(smooth_est[[spei_col]], probs = c(0.025, 0.975))
-    smooth_est <- smooth_est[smooth_est[[spei_col]] >= spei_limits[1] & 
-                               smooth_est[[spei_col]] <= spei_limits[2], ]
-    
-    estimates <- smooth_est$.estimate
-    se <- smooth_est$.se
-    
-    effect_range <- max(estimates) - min(estimates)
-    idx_min <- which.min(estimates)
-    idx_max <- which.max(estimates)
-    se_range <- sqrt(se[idx_min]^2 + se[idx_max]^2)
-    
-    lower <- effect_range - 1.96 * se_range
-    upper <- effect_range + 1.96 * se_range
-    
-    return(list(
-      effect_size = effect_range,
-      lower = lower,
-      upper = upper,
-      success = TRUE
-    ))
-  }, error = function(e) {
-    return(list(success = FALSE, error = e$message))
-  })
+make_wheel <- function(mig_months, win_months, win_year, col) {
+  base <- expand.grid(month = 1:12, ring = c("previous", "current"))
+  base$ymin <- ifelse(base$ring == "previous", 1, 2.2)
+  base$ymax <- base$ymin + 1
+  base$fill <- ifelse(base$ring == win_year & base$month %in% win_months, "window", "none")
+  
+  ggplot() +
+    geom_rect(data = base,
+              aes(xmin = month - 0.5, xmax = month + 0.5, ymin = ymin, ymax = ymax, fill = fill),
+              color = "white", linewidth = 0.6) +
+    annotate("rect", xmin = min(mig_months) - 0.5, xmax = max(mig_months) + 0.5,
+             ymin = 2.2, ymax = 3.2, fill = NA, color = "black", linewidth = 0.9) +  # migration
+    annotate("text", x = 1:12, y = 3.75, label = substr(month.abb, 1, 1), size = 3.5) +
+    scale_fill_manual(values = c(none = "grey90", window = col), guide = "none") +
+    scale_x_continuous(limits = c(0.5, 12.5)) +
+    scale_y_continuous(limits = c(0, 4)) +
+    coord_polar(start = 0) +   # January at 12 o'clock
+    theme_void()
 }
 
-# Process FALL
+# placeholders: fall migration Aug–Nov, window = current season
+wheel_fall   <- make_wheel(mig_months = 8:11, win_months = 8:11, win_year = "current",  col = "#D55E00")
+# placeholders: spring migration Mar–May, window = previous year same season
+wheel_spring <- make_wheel(mig_months = 3:5,  win_months = 3:5,  win_year = "previous", col = "#56B4E9")
 
-cat("Processing FALL effect sizes...\n")
-
-all_terms <- rownames(fall_summary$s.table)
-drought_terms <- all_terms[grepl("SPEI", all_terms) & !grepl("ti\\(|te\\(|,", all_terms)]
-
-fall_data <- data.frame(
-  term = drought_terms,
-  f_stat = fall_summary$s.table[drought_terms, "F"],
-  season = "Fall",
-  stringsAsFactors = FALSE
-)
-
-fall_data$category <- sapply(fall_data$term, categorize_drought)
-fall_data <- fall_data %>% filter(!is.na(category))
-
-for(i in 1:nrow(fall_data)) {
-  result <- calculate_effect_size(fall_model, fall_data$term[i], fall_summary)
-  if(result$success) {
-    fall_data$effect_size[i] <- result$effect_size
-    fall_data$lower[i] <- result$lower
-    fall_data$upper[i] <- result$upper
-  }
-}
-
-cat("  ✓ Fall effect sizes calculated\n")
-
-# Clear fall model
-
-rm(fall_model, fall_summary)
-gc()
-
-# Process SPRING
-
-cat("Processing SPRING effect sizes...\n")
-
-all_terms <- rownames(spring_summary$s.table)
-drought_terms <- all_terms[grepl("SPEI", all_terms) & !grepl("ti\\(|te\\(|,", all_terms)]
-
-spring_data <- data.frame(
-  term = drought_terms,
-  f_stat = spring_summary$s.table[drought_terms, "F"],
-  season = "Spring",
-  stringsAsFactors = FALSE
-)
-
-spring_data$category <- sapply(spring_data$term, categorize_drought)
-spring_data <- spring_data %>% filter(!is.na(category))
-
-for(i in 1:nrow(spring_data)) {
-  result <- calculate_effect_size(spring_model, spring_data$term[i], spring_summary)
-  if(result$success) {
-    spring_data$effect_size[i] <- result$effect_size
-    spring_data$lower[i] <- result$lower
-    spring_data$upper[i] <- result$upper
-  }
-}
-
-cat("  ✓ Spring effect sizes calculated\n")
-
-# Clear spring model
-
-rm(spring_model, spring_summary)
-gc()
-
-# Combine data
-
-combined_data <- bind_rows(fall_data, spring_data)
-
-combined_data <- combined_data %>%
-  filter(category %in% c("Concurrent Season", "Immediate Previous Season"))
-
-combined_data$category <- factor(
-  combined_data$category,
-  levels = c("Concurrent Season", "Immediate Previous Season")
-)
-combined_data$season <- factor(combined_data$season, levels = c("Fall", "Spring"))
-
-# Create x-axis position
-
-combined_data$x_position <- factor(
-  paste(combined_data$category, combined_data$season),
-  levels = c(
-    "Concurrent Season Fall",
-    "Concurrent Season Spring",
-    "Immediate Previous Season Fall",
-    "Immediate Previous Season Spring"
-  )
-)
-
-# Assign numeric positions
-
-combined_data <- combined_data %>%
-  mutate(x_numeric = case_when(
-    x_position == "Concurrent Season Fall" ~ 1,
-    x_position == "Concurrent Season Spring" ~ 2,
-    x_position == "Immediate Previous Season Fall" ~ 3,
-    x_position == "Immediate Previous Season Spring" ~ 4
-  ))
-
-# Create bar chart
-
-p <- ggplot(combined_data, aes(x = x_numeric, y = effect_size)) +
-  geom_col_pattern(
-    aes(fill = category, pattern = season),
-    width = 0.75,
-    color = "white",
-    linewidth = 0.4,
-    pattern_density = 0.3,
-    pattern_spacing = 0.02,
-    pattern_angle = 45,
-    pattern_fill = "white",
-    pattern_color = "gray30"
-  ) +
-  geom_errorbar(
-    aes(ymin = lower, ymax = upper),
-    width = 0.2,
-    linewidth = 0.8,
-    color = "gray20"
-  ) +
-  scale_fill_manual(
-    name = "Drought Timing",
-    values = c("Concurrent Season" = "#FF0000", "Immediate Previous Season" = "#FFC000")
-  ) +
-  scale_pattern_manual(
-    values = c("Fall" = "none", "Spring" = "stripe"),
-    guide = "none"
-  ) +
-  scale_x_continuous(
-    breaks = c(1, 2, 3, 4),
-    labels = NULL,
-    limits = c(0.4, 4.6),
-    expand = c(0, 0)
-  ) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(
-    x = NULL,
-    y = "Effect Size on Stopover"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.title.y = element_text(face = "bold", size = 11),
-    legend.position = "inside right",
-    legend.position.inside = c(0.02, 0.98),
-    legend.justification = c(0, 1),
-    legend.background = element_blank(),
-    legend.margin = margin(5, 8, 5, 8),
-    legend.title = element_text(face = "bold", size = 13),
-    legend.text = element_text(size = 12),
-    legend.key.size = unit(0.9, "lines"),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor = element_blank(),
-    plot.margin = margin(10, 10, 40, 10)
-  ) +
-  guides(
-    fill = guide_legend(override.aes = list(pattern = "none"))
-  )
-
-ggsave(file.path(output_dir, "effect_size_bar_chart.png"), p, width = 8, height = 5, dpi = 300)
-
-cat("===============================================\n")
-cat("BAR CHART SAVED!\n")
-cat("===============================================\n")
-
-
+ggsave("figures_tables/figure5_wheel_fall.png",   wheel_fall,   width = 2.5, height = 2.5, dpi = 300, bg = "white")
+ggsave("figures_tables/figure5_wheel_spring.png", wheel_spring, width = 2.5, height = 2.5, dpi = 300, bg = "white")
